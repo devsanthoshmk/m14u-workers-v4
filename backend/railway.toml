@@ -4,6 +4,3 @@ builder = "RAILPACK"
 [deploy]
 startCommand = "pnpm start"
 restartPolicyType = "ON_FAILURE"
-
-[environments]
-RAILPACK_VERSION = "0.17.2"
