@@ -1,0 +1,11 @@
+meta {
+  name: V1 Get Room
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{baseUrl}}/api/v1/rooms/{{roomCode}}?peerId={{memberPeerId}}
+  body: none
+  auth: none
+}

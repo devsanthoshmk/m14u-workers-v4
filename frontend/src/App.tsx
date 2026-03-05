@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { NowPlayingPage } from '@/pages/NowPlayingPage';
 import { QueuePage } from '@/pages/QueuePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { JoinRoomPage } from '@/pages/JoinRoomPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/favorites" element={null} />
         <Route path="/now-playing" element={<NowPlayingPage />} />
         <Route path="/queue" element={<QueuePage />} />
+        <Route path="/room/:code" element={<JoinRoomPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

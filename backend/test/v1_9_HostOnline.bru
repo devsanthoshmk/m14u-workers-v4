@@ -1,0 +1,25 @@
+meta {
+  name: V1 Host Online
+  type: http
+  seq: 22
+}
+
+get {
+  url: {{baseUrl}}/api/v1/rooms/{{roomCode}}/host-online
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test("host-online status is 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("host-online response contract", function () {
+    const body = res.getBody();
+    expect(body.roomCode).to.equal(bru.getEnvVar("roomCode"));
+    expect(body.hostPeerId).to.equal(bru.getEnvVar("hostPeerId"));
+    expect(body.isHostOnline).to.be.a("boolean");
+    expect(body).to.have.property("ttlMs");
+  });
+}

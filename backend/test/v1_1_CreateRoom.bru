@@ -1,0 +1,28 @@
+meta {
+  name: V1 Create Room
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{baseUrl}}/api/v1/rooms
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "displayName": "V1 Host",
+    "initialState": {
+      "songId": "test1234",
+      "queue": []
+    }
+  }
+}
+
+script:post-response {
+  if(res.status === 201) {
+    bru.setEnvVar("roomCode", res.body.roomCode);
+    bru.setEnvVar("hostPeerId", res.body.peerId);
+  }
+}

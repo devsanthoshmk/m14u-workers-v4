@@ -111,6 +111,25 @@ export const usePlayerStore = create<PlayerStore>()(
 
             playSong: async (song: Song) => {
                 const state = get();
+
+                // If member is in a room and sync isn't paused, delegate "play/retry" to the Listen Along reconnect logic
+                try {
+                    const { useListenAlongStore } = await import('@/stores/listenAlongStore');
+                    const listenState = useListenAlongStore.getState();
+                    if (listenState.isInRoom && !listenState.isHost && !listenState.isSyncPaused) {
+                        set({ error: null, isBuffering: true });
+                        listenState.reconnect().catch((err: unknown) => {
+                            set({
+                                error: err instanceof Error ? err.message : 'Sync reconnect failed',
+                                isBuffering: false,
+                            });
+                        });
+                        return; // Abort local loose playback, wait for sync to override
+                    }
+                } catch (e) {
+                    // Ignore module import error in testing
+                }
+
                 // Add current song's listening time to history before switching
                 if (state.currentSong && state.currentTime > 5) {
                     state.addToHistory(state.currentSong, state.currentTime);
@@ -119,6 +138,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 set({
                     currentSong: song,
                     isBuffering: true,
+                    isPlaying: false,
                     error: null,
                     currentTime: 0,
                     duration: song.duration || 0,

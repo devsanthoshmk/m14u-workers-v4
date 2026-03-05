@@ -8,7 +8,12 @@ The M14U backend is an ExpressJS service providing music metadata and direct aud
    ```bash
    pnpm install
    ```
-2. Approve post-installation build scripts (necessary for `youtube-dl-exec` downloading `yt-dlp` binary):
+2. Set up environment variables:
+   Copy `.env.example` to `.env` and fill in your Firebase credentials:
+   ```bash
+   cp .env.example .env
+   ```
+3. Approve post-installation build scripts (necessary for `youtube-dl-exec` downloading `yt-dlp` binary):
    ```bash
    pnpm approve-builds
    # Select youtube-dl-exec and @biomejs/biome if prompted

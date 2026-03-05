@@ -128,7 +128,7 @@ class AudioEngine {
         this.callbacks = callbacks;
     }
 
-    async loadAndPlay(url: string, videoId: string): Promise<void> {
+    load(url: string, videoId: string): void {
         this.retryCount = 0;
         this.currentVideoId = videoId;
         this.clearLoadTimeout();
@@ -136,13 +136,21 @@ class AudioEngine {
         // Set a hard timeout — if audio doesn't start within 20s, report error
         this.loadTimeoutId = setTimeout(() => {
             if (this.audio.readyState < 2 && this.currentVideoId === videoId) {
-                console.error('[AudioEngine] Load timeout — audio did not start within 20s');
+                console.error('[AudioEngine] Load timeout — audio did not buffer within 20s');
                 this.callbacks.onError?.('Audio load timed out. Try again.');
             }
         }, 20000);
 
         this.audio.src = url;
         this.audio.load();
+    }
+
+    getReadyState(): number {
+        return this.audio.readyState;
+    }
+
+    async loadAndPlay(url: string, videoId: string): Promise<void> {
+        this.load(url, videoId);
 
         try {
             await this.audio.play();

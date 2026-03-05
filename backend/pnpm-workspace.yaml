@@ -1,4 +1,6 @@
 onlyBuiltDependencies:
   - '@biomejs/biome'
+  - '@firebase/util'
   - better-sqlite3
+  - protobufjs
   - youtube-dl-exec

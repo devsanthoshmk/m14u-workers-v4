@@ -8,8 +8,18 @@ import { create } from 'youtube-dl-exec';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import webrtcRouter from './webrtc-signaling.js';
+import v1RoomsRouter from './v1-rooms.js';
 
 dotenv.config();
+
+// Mute excessive ZodError logs from ytmusic-api 
+const originalConsoleError = console.error;
+console.error = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('ts-npm-ytmusic-api/issues')) {
+        return;
+    }
+    originalConsoleError(...args);
+};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,8 +38,10 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Mount WebRTC signaling routes under /api
+// Mount original WebRTC routes (if still needed, else we can drop, let's keep or remove depending)
 app.use('/api', webrtcRouter);
+// Mount new v1 room polling routes
+app.use('/api/v1/rooms', v1RoomsRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Location & Language Resolver
@@ -247,6 +259,9 @@ app.get('/api/trending', async (req, res) => {
     }
 });
 
+// A Map to store in-flight ytExec promises to deduplicate parallel requests
+const inFlightStreams = new Map();
+
 // 3. Audio stream link from YouTube Video ID
 app.get('/api/stream/:videoId', async (req, res) => {
     try {
@@ -262,13 +277,21 @@ app.get('/api/stream/:videoId', async (req, res) => {
 
         const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-        const result = await ytExec(ytUrl, {
-            dumpJson: true,
-            format: 'bestaudio',
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true
-        });
+        let streamPromise = inFlightStreams.get(videoId);
+        if (!streamPromise) {
+            streamPromise = ytExec(ytUrl, {
+                dumpJson: true,
+                format: 'bestaudio',
+                noCheckCertificates: true,
+                noWarnings: true,
+                preferFreeFormats: true
+            }).finally(() => {
+                inFlightStreams.delete(videoId);
+            });
+            inFlightStreams.set(videoId, streamPromise);
+        }
+
+        const result = await streamPromise;
 
         if (result && result.url) {
             // cache audio url for 2 hours (Google Video links typically expire in ~6 hours)

@@ -27,7 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // ─────────────────────────────────────────────────────────────────────────────
 const ROOM_CODE_LENGTH = 6;
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;          // 2 hours
-const PEER_TIMEOUT_MS = 60 * 1000;                // 60 s heartbeat threshold
+const PEER_TIMEOUT_MS = 120 * 1000;               // 120 s — generous for mobile backgrounding
 const SIGNAL_TTL_MS = 5 * 60 * 1000;              // 5 min – stale signals are purged
 const CLEANUP_INTERVAL_MS = 30 * 1000;            // purge sweep every 30 s
 
@@ -116,7 +116,10 @@ const stmts = {
 
     insertPeer: db.prepare(`INSERT OR IGNORE INTO peers (room_id, peer_id, display_name, joined_at, last_seen) VALUES (?, ?, ?, ?, ?)`),
     findPeersInRoom: db.prepare(`SELECT peer_id, display_name, joined_at, last_seen FROM peers WHERE room_id = ?`),
+    findPeerById: db.prepare(`SELECT * FROM peers WHERE room_id = ? AND peer_id = ?`),
     updatePeerHeartbeat: db.prepare(`UPDATE peers SET last_seen = ? WHERE room_id = ? AND peer_id = ?`),
+    // Upsert: re-insert peer if they were evicted during a reload (120s mobile background)
+    upsertPeer: db.prepare(`INSERT INTO peers (room_id, peer_id, display_name, joined_at, last_seen) VALUES (?, ?, ?, ?, ?) ON CONFLICT(room_id, peer_id) DO UPDATE SET last_seen = excluded.last_seen`),
     removePeer: db.prepare(`DELETE FROM peers WHERE room_id = ? AND peer_id = ?`),
     removeStalePeers: db.prepare(`DELETE FROM peers WHERE last_seen < ?`),
     countPeersInRoom: db.prepare(`SELECT COUNT(*) AS count FROM peers WHERE room_id = ?`),
@@ -181,13 +184,16 @@ router.post('/rooms', (req, res) => {
     }
 });
 
-// ── POST /api/rooms/:code/join — Join an existing room ──────────────────────
+// ── POST /api/rooms/:code/join — Join an existing room (Member with Offer) ───
 router.post('/rooms/:code/join', (req, res) => {
     const { code } = req.params;
-    const { displayName } = req.body;
+    const { displayName, offer, peerId: existingPeerId } = req.body;
 
     if (!displayName || typeof displayName !== 'string' || displayName.trim().length === 0) {
         return res.status(400).json({ error: 'displayName is required (non-empty string)' });
+    }
+    if (!offer) {
+        return res.status(400).json({ error: 'offer is required' });
     }
 
     const room = stmts.findRoomByCode.get(code.toUpperCase());
@@ -199,11 +205,16 @@ router.post('/rooms/:code/join', (req, res) => {
         return res.status(404).json({ error: 'Room has expired' });
     }
 
-    const peerId = generatePeerId();
+    const peerId = existingPeerId || generatePeerId();
     const ts = now();
 
     try {
-        stmts.insertPeer.run(room.id, peerId, displayName.trim(), ts, ts);
+        stmts.upsertPeer.run(room.id, peerId, displayName.trim(), ts, ts);
+
+        // Insert the member's offer into signals destined for the host
+        const payloadStr = typeof offer === 'string' ? offer : JSON.stringify(offer);
+        stmts.insertSignal.run(room.id, peerId, room.host_peer, 'offer', payloadStr, ts);
+
         const peers = stmts.findPeersInRoom.all(room.id);
 
         res.status(200).json({
@@ -287,82 +298,19 @@ router.post('/rooms/:code/leave', (req, res) => {
     res.json({ message: 'Left room' });
 });
 
-// ── POST /api/rooms/:code/heartbeat — Keep-alive ping ───────────────────────
-router.post('/rooms/:code/heartbeat', (req, res) => {
-    const { peerId } = req.body;
-    if (!peerId) {
-        return res.status(400).json({ error: 'peerId is required' });
-    }
-
-    const room = stmts.findRoomByCode.get(req.params.code.toUpperCase());
-    if (!room) {
-        return res.status(404).json({ error: 'Room not found or expired' });
-    }
-
-    stmts.updatePeerHeartbeat.run(now(), room.id, peerId);
-    const peers = stmts.findPeersInRoom.all(room.id);
-
-    res.json({
-        peers: peers.map(p => ({
-            peerId: p.peer_id,
-            displayName: p.display_name,
-            isHost: p.peer_id === room.host_peer,
-            isOnline: (now() - p.last_seen) < PEER_TIMEOUT_MS,
-        })),
-    });
-});
-
-// ── POST /api/rooms/:code/signal — Send signaling data to a specific peer ──
-router.post('/rooms/:code/signal', (req, res) => {
-    const { peerId, targetPeerId, type, payload } = req.body;
-
-    if (!peerId || !targetPeerId || !type || !payload) {
-        return res.status(400).json({
-            error: 'peerId, targetPeerId, type, and payload are all required',
-        });
-    }
-
-    const validTypes = ['offer', 'answer', 'ice-candidate'];
-    if (!validTypes.includes(type)) {
-        return res.status(400).json({
-            error: `type must be one of: ${validTypes.join(', ')}`,
-        });
-    }
-
-    const room = stmts.findRoomByCode.get(req.params.code.toUpperCase());
-    if (!room) {
-        return res.status(404).json({ error: 'Room not found or expired' });
-    }
-
-    const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
-
-    try {
-        stmts.insertSignal.run(room.id, peerId, targetPeerId, type, payloadStr, now());
-        res.status(201).json({ message: 'Signal queued' });
-    } catch (err) {
-        console.error('Signal send error:', err);
-        res.status(500).json({ error: 'Failed to send signal' });
-    }
-});
-
-// ── GET /api/rooms/:code/signal — Poll pending signals for a peer ───────────
-router.get('/rooms/:code/signal', (req, res) => {
+// ── GET /api/rooms/:code/offers — (Host) Poll for Member Offers ─────────────
+router.get('/rooms/:code/offers', (req, res) => {
     const peerId = req.query.peerId;
-    if (!peerId) {
-        return res.status(400).json({ error: 'peerId query parameter is required' });
-    }
+    if (!peerId) return res.status(400).json({ error: 'peerId query parameter is required' });
 
     const room = stmts.findRoomByCode.get(req.params.code.toUpperCase());
-    if (!room) {
-        return res.status(404).json({ error: 'Room not found or expired' });
-    }
+    if (!room) return res.status(404).json({ error: 'Room not found or expired' });
+    if (room.host_peer !== peerId) return res.status(403).json({ error: 'Only host can poll offers' });
 
-    // Also refresh heartbeat on every poll
     stmts.updatePeerHeartbeat.run(now(), room.id, peerId);
 
-    const signals = stmts.pollSignals.all(room.id, peerId);
+    const signals = stmts.pollSignals.all(room.id, peerId).filter(s => s.type === 'offer');
 
-    // Mark consumed inside a transaction for atomicity
     const consumeTx = db.transaction((rows) => {
         for (const row of rows) {
             stmts.consumeSignals.run(row.id);
@@ -371,13 +319,59 @@ router.get('/rooms/:code/signal', (req, res) => {
     consumeTx(signals);
 
     res.json({
-        signals: signals.map(s => ({
+        offers: signals.map(s => ({
             fromPeer: s.from_peer,
-            toPeer: s.to_peer,
-            type: s.type,
-            payload: tryParseJSON(s.payload),
+            offer: tryParseJSON(s.payload),
             createdAt: s.created_at,
         })),
+    });
+});
+
+// ── POST /api/rooms/:code/answer/:memberId — (Host) Send Answer to Member ───
+router.post('/rooms/:code/answer/:memberId', (req, res) => {
+    const { code, memberId } = req.params;
+    const { peerId, answer } = req.body;
+
+    if (!peerId || !answer) {
+        return res.status(400).json({ error: 'peerId and answer are required' });
+    }
+
+    const room = stmts.findRoomByCode.get(code.toUpperCase());
+    if (!room) return res.status(404).json({ error: 'Room not found or expired' });
+    if (room.host_peer !== peerId) return res.status(403).json({ error: 'Only host can send answers' });
+
+    const payloadStr = typeof answer === 'string' ? answer : JSON.stringify(answer);
+
+    try {
+        stmts.insertSignal.run(room.id, peerId, memberId, 'answer', payloadStr, now());
+        res.status(201).json({ message: 'Answer queued' });
+    } catch (err) {
+        console.error('Answer send error:', err);
+        res.status(500).json({ error: 'Failed to send answer' });
+    }
+});
+
+// ── GET /api/rooms/:code/my-answer — (Member) Poll for Host Answer ──────────
+router.get('/rooms/:code/my-answer', (req, res) => {
+    const peerId = req.query.peerId;
+    if (!peerId) return res.status(400).json({ error: 'peerId query parameter is required' });
+
+    const room = stmts.findRoomByCode.get(req.params.code.toUpperCase());
+    if (!room) return res.status(404).json({ error: 'Room not found or expired' });
+
+    stmts.updatePeerHeartbeat.run(now(), room.id, peerId);
+
+    const signals = stmts.pollSignals.all(room.id, peerId).filter(s => s.type === 'answer');
+
+    const consumeTx = db.transaction((rows) => {
+        for (const row of rows) {
+            stmts.consumeSignals.run(row.id);
+        }
+    });
+    consumeTx(signals);
+
+    res.json({
+        answer: signals.length > 0 ? tryParseJSON(signals[signals.length - 1].payload) : null
     });
 });
 

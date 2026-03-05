@@ -1,0 +1,30 @@
+meta {
+  name: V1 Register FCM Token
+  type: http
+  seq: 20
+}
+
+put {
+  url: {{baseUrl}}/api/v1/rooms/{{roomCode}}/fcm-token
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "peerId": "{{hostPeerId}}",
+    "token": "test-fcm-token-host"
+  }
+}
+
+script:post-response {
+  test("register token status is 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("register token response message", function () {
+    const body = res.getBody();
+    expect(body).to.have.property("message");
+    expect(body.message).to.equal("FCM token registered");
+  });
+}

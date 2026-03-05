@@ -1,0 +1,7 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-api-YatDR7okXUdb_OUp7Wn1yMMPGZjxGxSynT31Tspkks-DWUJ_LJ0QO-vGEmCHw5chEU9c4BVLK0xlT2br8SZib20ipPg8tSpSznQj7ezGQKzz_-VM2eCdCmU",
+    "ANTHROPIC_MODEL": "MiniMax-M2.5"
+  }
+}

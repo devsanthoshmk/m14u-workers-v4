@@ -8,6 +8,7 @@
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useListenAlongStore } from '@/stores/listenAlongStore';
 import { getThumbnail, formatDuration } from '@/utils/format';
 import { PlayerControls } from './PlayerControls';
 import { VolumeControl } from './VolumeControl';
@@ -19,6 +20,7 @@ import {
     Heart,
     ChevronUp,
     Loader2,
+    Radio,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -39,8 +41,14 @@ export function PlayerBar() {
 
     const toggleQueue = useUIStore(s => s.toggleQueue);
     const toggleLyrics = useUIStore(s => s.toggleLyrics);
+    const toggleRoomPanel = useUIStore(s => s.toggleRoomPanel);
     const isQueueOpen = useUIStore(s => s.isQueueOpen);
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
+    const isRoomPanelOpen = useUIStore(s => s.isRoomPanelOpen);
+
+    const isInRoom = useListenAlongStore(s => s.isInRoom);
+    const roomCode = useListenAlongStore(s => s.roomCode);
+    const peerCount = useListenAlongStore(s => s.peers.length);
 
     const [isSeeking, setIsSeeking] = useState(false);
     const [seekValue, setSeekValue] = useState(0);
@@ -168,6 +176,23 @@ export function PlayerBar() {
                     >
                         <ListMusic className="h-[18px] w-[18px]" />
                     </button>
+
+                    {isInRoom && (
+                        <button
+                            onClick={toggleRoomPanel}
+                            className={cn(
+                                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-full transition-all hover:bg-white/5 text-[11px] font-medium',
+                                isRoomPanelOpen ? 'text-primary bg-primary/10' : 'text-muted-foreground'
+                            )}
+                            title="Listen Along"
+                        >
+                            <Radio className="h-3.5 w-3.5" />
+                            <span className="hidden lg:inline">{roomCode}</span>
+                            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/20 text-primary text-[10px] px-1">
+                                {peerCount}
+                            </span>
+                        </button>
+                    )}
 
                     <SleepTimerButton />
                 </div>

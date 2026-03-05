@@ -17,6 +17,8 @@
 7. [Caching Behaviour](#7-caching-behaviour)
 8. [Frontend Integration Guide](#8-frontend-integration-guide)
 9. [WebRTC Signaling API](#9-webrtc-signaling-api)
+10. [WebRTC Data Channel Protocol](#10-webrtc-data-channel-protocol)
+11. [Mobile Resilience & Session Persistence](#11-mobile-resilience--session-persistence)
 
 ---
 
@@ -27,6 +29,7 @@
 Confirms the API server is alive. Use this to gate your UI loading state.
 
 ### Response `200 OK`
+
 ```json
 {
   "message": "M14U Music API is running."
@@ -43,9 +46,9 @@ Searches YouTube Music for songs matching a query. Returns enriched metadata —
 
 ### Query Parameters
 
-| Parameter | Type   | Required | Description                     |
-|-----------|--------|----------|---------------------------------|
-| `q`       | string | ✅        | Search term — song name, artist, album, lyric snippet |
+| Parameter | Type   | Required | Description                                           |
+| --------- | ------ | -------- | ----------------------------------------------------- |
+| `q`       | string | ✅       | Search term — song name, artist, album, lyric snippet |
 
 ### Example Request
 
@@ -75,11 +78,31 @@ Returns an **array** of Song objects.
     },
     "duration": 205,
     "thumbnails": [
-      { "url": "https://lh3.googleusercontent.com/...=w60-h60-l90-rj",   "width": 60,   "height": 60   },
-      { "url": "https://lh3.googleusercontent.com/...=w120-h120-l90-rj", "width": 120,  "height": 120  },
-      { "url": "https://lh3.googleusercontent.com/...=w226-h226-l90-rj", "width": 226,  "height": 226  },
-      { "url": "https://lh3.googleusercontent.com/...=w544-h544-l90-rj", "width": 544,  "height": 544  },
-      { "url": "https://lh3.googleusercontent.com/...=w1080-h1080-l90-rj","width": 1080, "height": 1080 }
+      {
+        "url": "https://lh3.googleusercontent.com/...=w60-h60-l90-rj",
+        "width": 60,
+        "height": 60
+      },
+      {
+        "url": "https://lh3.googleusercontent.com/...=w120-h120-l90-rj",
+        "width": 120,
+        "height": 120
+      },
+      {
+        "url": "https://lh3.googleusercontent.com/...=w226-h226-l90-rj",
+        "width": 226,
+        "height": 226
+      },
+      {
+        "url": "https://lh3.googleusercontent.com/...=w544-h544-l90-rj",
+        "width": 544,
+        "height": 544
+      },
+      {
+        "url": "https://lh3.googleusercontent.com/...=w1080-h1080-l90-rj",
+        "width": 1080,
+        "height": 1080
+      }
     ],
     "description": "Listen to \"Believer\" by Imagine Dragons. Featured on the album \"Evolve\". Duration: 3:25.",
     "streamUrl": "/api/stream/Kx7B-XvmFtE"
@@ -88,30 +111,32 @@ Returns an **array** of Song objects.
 ```
 
 ### Response `400 Bad Request`
+
 ```json
 { "error": "Query parameter 'q' is required" }
 ```
 
 ### Response `500 Internal Server Error`
+
 ```json
 { "error": "Failed to search songs" }
 ```
 
 ### Field Reference
 
-| Field         | Type            | Description |
-|---------------|-----------------|-------------|
-| `type`        | `"SONG"`        | Always `SONG` for this endpoint |
-| `videoId`     | string          | YouTube video ID — use this as the unique song key across your app |
-| `name`        | string          | Song title |
-| `artist.name` | string          | Primary artist display name |
-| `artist.artistId` | string      | YouTube Music artist ID (can be used for future artist page APIs) |
-| `album.name`  | string \| null  | Album name — may be null for singles |
-| `album.albumId` | string \| null | Album ID — may be null |
-| `duration`    | number          | Duration in **seconds** |
-| `thumbnails`  | Thumbnail[]     | Sorted ascending by width. Always contains `60`, `120`, `226`, `544`, `1080` sizes |
-| `description` | string          | Pre-formatted string for meta tags and UI subtitles |
-| `streamUrl`   | string          | Relative path to the stream endpoint for this song — pass to `/api/stream/:videoId` |
+| Field             | Type           | Description                                                                         |
+| ----------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `type`            | `"SONG"`       | Always `SONG` for this endpoint                                                     |
+| `videoId`         | string         | YouTube video ID — use this as the unique song key across your app                  |
+| `name`            | string         | Song title                                                                          |
+| `artist.name`     | string         | Primary artist display name                                                         |
+| `artist.artistId` | string         | YouTube Music artist ID (can be used for future artist page APIs)                   |
+| `album.name`      | string \| null | Album name — may be null for singles                                                |
+| `album.albumId`   | string \| null | Album ID — may be null                                                              |
+| `duration`        | number         | Duration in **seconds**                                                             |
+| `thumbnails`      | Thumbnail[]    | Sorted ascending by width. Always contains `60`, `120`, `226`, `544`, `1080` sizes  |
+| `description`     | string         | Pre-formatted string for meta tags and UI subtitles                                 |
+| `streamUrl`       | string         | Relative path to the stream endpoint for this song — pass to `/api/stream/:videoId` |
 
 ---
 
@@ -127,11 +152,11 @@ Accepts **friendly plain-English names** — no need to look up ISO codes.
 
 > Use **either** `q` (friendly) **or** `gl`+`hl` (raw codes). `q` takes priority.
 
-| Parameter | Type   | Required | Default | Description |
-|-----------|--------|----------|---------|-------------|
+| Parameter | Type   | Required | Default | Description                                                                             |
+| --------- | ------ | -------- | ------- | --------------------------------------------------------------------------------------- |
 | `q`       | string | optional | —       | Plain-English location/language: `tamil`, `india`, `usa`, `korean`, `tamil india`, etc. |
-| `gl`      | string | optional | `IN`    | ISO 3166-1 alpha-2 country code (e.g. `US`, `GB`, `JP`) |
-| `hl`      | string | optional | `en`    | ISO 639-1 language code (e.g. `ta`, `hi`, `en`, `ko`) |
+| `gl`      | string | optional | `IN`    | ISO 3166-1 alpha-2 country code (e.g. `US`, `GB`, `JP`)                                 |
+| `hl`      | string | optional | `en`    | ISO 639-1 language code (e.g. `ta`, `hi`, `en`, `ko`)                                   |
 
 ### Locale Resolution Logic
 
@@ -166,17 +191,17 @@ GET /api/trending?gl=US&hl=en
 
 ### Resolved Locale Quick Reference
 
-| `q` value      | Resolved `gl` | Resolved `hl` |
-|----------------|---------------|---------------|
-| `tamil`        | IN            | ta            |
-| `india`        | IN            | en            |
-| `tamil india`  | IN            | ta            |
-| `hindi`        | IN            | hi            |
-| `usa`          | US            | en            |
-| `uk`           | GB            | en            |
-| `korean`       | KR            | ko            |
-| `japanese`     | JP            | ja            |
-| `arabic`       | IN *(default)*| ar            |
+| `q` value     | Resolved `gl`  | Resolved `hl` |
+| ------------- | -------------- | ------------- |
+| `tamil`       | IN             | ta            |
+| `india`       | IN             | en            |
+| `tamil india` | IN             | ta            |
+| `hindi`       | IN             | hi            |
+| `usa`         | US             | en            |
+| `uk`          | GB             | en            |
+| `korean`      | KR             | ko            |
+| `japanese`    | JP             | ja            |
+| `arabic`      | IN _(default)_ | ar            |
 
 ### Response `200 OK`
 
@@ -250,15 +275,16 @@ GET /api/trending?gl=US&hl=en
 
 Each section's `contents` array can contain any of these types — check the `type` field:
 
-| `type`    | Key Fields                                                              | Has `streamUrl`? |
-|-----------|-------------------------------------------------------------------------|------------------|
-| `SONG`    | `videoId`, `name`, `artist`, `album`, `duration`, `thumbnails`         | ✅ Yes            |
-| `ALBUM`   | `albumId`, `playlistId`, `name`, `artist`, `year`, `thumbnails`        | ❌ No             |
-| `ARTIST`  | `artistId`, `name`, `thumbnails`                                       | ❌ No             |
-| `PLAYLIST`| `playlistId`, `name`, `thumbnails`                                     | ❌ No             |
-| `VIDEO`   | `videoId`, `name`, `artist`, `duration`, `thumbnails`                  | ✅ Yes            |
+| `type`     | Key Fields                                                      | Has `streamUrl`? |
+| ---------- | --------------------------------------------------------------- | ---------------- |
+| `SONG`     | `videoId`, `name`, `artist`, `album`, `duration`, `thumbnails`  | ✅ Yes           |
+| `ALBUM`    | `albumId`, `playlistId`, `name`, `artist`, `year`, `thumbnails` | ❌ No            |
+| `ARTIST`   | `artistId`, `name`, `thumbnails`                                | ❌ No            |
+| `PLAYLIST` | `playlistId`, `name`, `thumbnails`                              | ❌ No            |
+| `VIDEO`    | `videoId`, `name`, `artist`, `duration`, `thumbnails`           | ✅ Yes           |
 
 ### Response `500 Internal Server Error`
+
 ```json
 { "error": "Failed to fetch trending content" }
 ```
@@ -275,9 +301,9 @@ Resolves a YouTube video ID to a **direct Google Video CDN audio URL** (best ava
 
 ### Path Parameter
 
-| Parameter | Type   | Required | Description                          |
-|-----------|--------|----------|--------------------------------------|
-| `videoId` | string | ✅        | YouTube video ID (11-character string from `videoId` in search or trending results) |
+| Parameter | Type   | Required | Description                                                                         |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------- |
+| `videoId` | string | ✅       | YouTube video ID (11-character string from `videoId` in search or trending results) |
 
 ### Example Request
 
@@ -295,6 +321,7 @@ GET /api/stream/dQw4w9WgXcQ
 ```
 
 ### Response `404 Not Found`
+
 ```json
 { "error": "Audio stream not found" }
 ```
@@ -302,6 +329,7 @@ GET /api/stream/dQw4w9WgXcQ
 Possible causes: video is private, region-locked, or removed.
 
 ### Response `500 Internal Server Error`
+
 ```json
 { "error": "Failed to fetch stream link" }
 ```
@@ -310,7 +338,7 @@ Possible causes: video is private, region-locked, or removed.
 
 ```html
 <audio controls>
-  <source src="<url from response>" type="audio/webm">
+  <source src="<url from response>" type="audio/webm" />
   Your browser does not support audio.
 </audio>
 ```
@@ -328,11 +356,12 @@ audio.play();
 ## 5. Data Schemas
 
 ### Song Object
+
 ```ts
 interface Song {
   type: "SONG";
-  videoId: string;           // Unique ID — use as React key, map key, etc.
-  name: string;              // Display title
+  videoId: string; // Unique ID — use as React key, map key, etc.
+  name: string; // Display title
   artist: {
     name: string;
     artistId: string;
@@ -341,38 +370,40 @@ interface Song {
     name: string;
     albumId: string;
   } | null;
-  duration: number;           // Seconds
-  thumbnails: Thumbnail[];    // Always sorted smallest → largest
-  description: string;        // Pre-built subtitle / meta description
-  streamUrl: string;          // e.g. "/api/stream/Kx7B-XvmFtE"
+  duration: number; // Seconds
+  thumbnails: Thumbnail[]; // Always sorted smallest → largest
+  description: string; // Pre-built subtitle / meta description
+  streamUrl: string; // e.g. "/api/stream/Kx7B-XvmFtE"
 }
 ```
 
 ### Thumbnail Object
+
 ```ts
 interface Thumbnail {
-  url: string;    // Absolute lh3.googleusercontent.com URL
-  width: number;  // Pixel width (one of: 60, 120, 226, 544, 1080)
+  url: string; // Absolute lh3.googleusercontent.com URL
+  width: number; // Pixel width (one of: 60, 120, 226, 544, 1080)
   height: number; // Always equals width (square)
 }
 ```
 
 **Thumbnail size usage guide:**
 
-| Size    | Use case                                               |
-|---------|--------------------------------------------------------|
-| `60`    | Mini player avatar, notification icon                  |
-| `120`   | Song list row thumbnail, search result                 |
-| `226`   | Song card in grid, home shelf item                     |
-| `544`   | Now-playing panel album art, album detail header       |
-| `1080`  | Full-screen/hero background, blurred backdrop          |
+| Size   | Use case                                         |
+| ------ | ------------------------------------------------ |
+| `60`   | Mini player avatar, notification icon            |
+| `120`  | Song list row thumbnail, search result           |
+| `226`  | Song card in grid, home shelf item               |
+| `544`  | Now-playing panel album art, album detail header |
+| `1080` | Full-screen/hero background, blurred backdrop    |
 
 ### Trending Response Object
+
 ```ts
 interface TrendingResponse {
   locale: {
-    gl: string;   // ISO country code that was resolved
-    hl: string;   // ISO language code that was resolved
+    gl: string; // ISO country code that was resolved
+    hl: string; // ISO language code that was resolved
   };
   sections: Section[];
 }
@@ -384,16 +415,18 @@ interface Section {
 ```
 
 ### Stream Response Object
+
 ```ts
 interface StreamResponse {
-  url: string;   // Direct Google Video CDN audio URL
+  url: string; // Direct Google Video CDN audio URL
 }
 ```
 
 ### Error Object
+
 ```ts
 interface ErrorResponse {
-  error: string;   // Human-readable error message
+  error: string; // Human-readable error message
 }
 ```
 
@@ -407,12 +440,12 @@ All endpoints follow a consistent error shape:
 { "error": "Human-readable message" }
 ```
 
-| HTTP Status | Meaning                              | When it happens                                                  |
-|-------------|--------------------------------------|------------------------------------------------------------------|
-| `200`       | Success                              | —                                                                |
-| `400`       | Bad Request                          | Required query param missing (e.g. no `q` on `/api/search`)     |
-| `404`       | Not Found                            | Video not available — private, deleted, or region-locked         |
-| `500`       | Internal Server Error                | YouTube Music or yt-dlp returned an unexpected response          |
+| HTTP Status | Meaning               | When it happens                                             |
+| ----------- | --------------------- | ----------------------------------------------------------- |
+| `200`       | Success               | —                                                           |
+| `400`       | Bad Request           | Required query param missing (e.g. no `q` on `/api/search`) |
+| `404`       | Not Found             | Video not available — private, deleted, or region-locked    |
+| `500`       | Internal Server Error | YouTube Music or yt-dlp returned an unexpected response     |
 
 ### Frontend Error Handling Pattern
 
@@ -422,7 +455,7 @@ async function searchSongs(query) {
 
   if (!res.ok) {
     const { error } = await res.json();
-    throw new Error(error);      // Bubble up to your error boundary / toast
+    throw new Error(error); // Bubble up to your error boundary / toast
   }
   return res.json();
 }
@@ -434,11 +467,11 @@ async function searchSongs(query) {
 
 The server uses an in-memory `node-cache` store. Identical requests within the TTL window return instantly without hitting YouTube.
 
-| Endpoint          | Cache Key                          | TTL     | Notes                                               |
-|-------------------|------------------------------------|---------|-----------------------------------------------------|
-| `GET /api/search` | `search-{q}`                       | 1 hour  | Cached per exact query string                       |
-| `GET /api/trending`| `trending-home-{gl}-{hl}`         | 30 min  | Cached per resolved locale pair                     |
-| `GET /api/stream` | `stream-{videoId}`                 | 2 hours | Audio CDN URLs expire ~6h; cached safely for 2h     |
+| Endpoint            | Cache Key                 | TTL     | Notes                                           |
+| ------------------- | ------------------------- | ------- | ----------------------------------------------- |
+| `GET /api/search`   | `search-{q}`              | 1 hour  | Cached per exact query string                   |
+| `GET /api/trending` | `trending-home-{gl}-{hl}` | 30 min  | Cached per resolved locale pair                 |
+| `GET /api/stream`   | `stream-{videoId}`        | 2 hours | Audio CDN URLs expire ~6h; cached safely for 2h |
 
 > Cache is **in-memory** and resets on server restart. For production, consider replacing with Redis.
 
@@ -472,15 +505,15 @@ The `thumbnails` array is always sorted ascending by `width`. Pick the best size
 function getThumbnail(thumbnails, preferredSize = 226) {
   // Find exact match or nearest larger size
   return (
-    thumbnails.find(t => t.width >= preferredSize) ||
-    thumbnails[thumbnails.length - 1]   // fallback to largest available
-  ).url;
+    thumbnails.find((t) => t.width >= preferredSize) ||
+    thumbnails[thumbnails.length - 1]
+  ).url; // fallback to largest available
 }
 
 // Usage
-const cardArt    = getThumbnail(song.thumbnails, 226);   // Grid card
-const playerArt  = getThumbnail(song.thumbnails, 544);   // Now-playing
-const heroBg     = getThumbnail(song.thumbnails, 1080);  // Full-screen backdrop
+const cardArt = getThumbnail(song.thumbnails, 226); // Grid card
+const playerArt = getThumbnail(song.thumbnails, 544); // Now-playing
+const heroBg = getThumbnail(song.thumbnails, 1080); // Full-screen backdrop
 ```
 
 ### Duration Formatting
@@ -488,7 +521,7 @@ const heroBg     = getThumbnail(song.thumbnails, 1080);  // Full-screen backdrop
 ```javascript
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60);
-  const s = String(seconds % 60).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, "0");
   return `${m}:${s}`;
 }
 // formatDuration(205) → "3:25"
@@ -501,11 +534,11 @@ let currentAudio = null;
 
 async function playSong(song) {
   // 1. song object already has all the metadata you need for the UI
-  updateNowPlayingUI(song);   // name, artist, thumbnail immediately
+  updateNowPlayingUI(song); // name, artist, thumbnail immediately
 
   // 2. Fetch the stream URL only when playing
   const res = await fetch(`http://localhost:4000${song.streamUrl}`);
-  if (!res.ok) throw new Error('Could not get stream URL');
+  if (!res.ok) throw new Error("Could not get stream URL");
   const { url } = await res.json();
 
   // 3. Play
@@ -519,16 +552,18 @@ async function playSong(song) {
 
 ```javascript
 // /api/trending response → { locale, sections }
-const { locale, sections } = await fetch('/api/trending?q=tamil').then(r => r.json());
+const { locale, sections } = await fetch("/api/trending?q=tamil").then((r) =>
+  r.json(),
+);
 
 for (const section of sections) {
-  console.log(section.title);       // "Quick picks", "Albums for you", etc.
+  console.log(section.title); // "Quick picks", "Albums for you", etc.
   for (const item of section.contents) {
-    if (item.type === 'SONG') {
+    if (item.type === "SONG") {
       // render song card — has streamUrl, thumbnails, name, artist
-    } else if (item.type === 'ALBUM') {
+    } else if (item.type === "ALBUM") {
       // render album card — albumId, name, artist, year, thumbnails
-    } else if (item.type === 'ARTIST') {
+    } else if (item.type === "ARTIST") {
       // render artist chip — artistId, name, thumbnails
     }
   }
@@ -542,11 +577,12 @@ Let users set their region in settings, but also offer auto-detection:
 ```javascript
 // Browser locale to ?q= value
 function getDefaultLocaleQuery() {
-  const lang = navigator.language || 'en';     // e.g. "ta-IN", "en-US", "ko-KR"
-  const parts = lang.split('-');
-  const langName = new Intl.DisplayNames(['en'], { type: 'language' })
-    .of(parts[0]);                              // e.g. "Tamil", "English", "Korean"
-  return langName?.toLowerCase() || 'english'; // → "tamil", "english", "korean"
+  const lang = navigator.language || "en"; // e.g. "ta-IN", "en-US", "ko-KR"
+  const parts = lang.split("-");
+  const langName = new Intl.DisplayNames(["en"], { type: "language" }).of(
+    parts[0],
+  ); // e.g. "Tamil", "English", "Korean"
+  return langName?.toLowerCase() || "english"; // → "tamil", "english", "korean"
 }
 
 fetch(`/api/trending?q=${getDefaultLocaleQuery()}`);
@@ -556,562 +592,275 @@ fetch(`/api/trending?q=${getDefaultLocaleQuery()}`);
 
 ---
 
-## 9. WebRTC Signaling API
+## 9. V1 Room Sync API (Polling Architecture)
 
-Enables real-time audio sharing between devices using WebRTC. The backend acts as a **signaling server** — it stores and relays SDP offers/answers and ICE candidates between peers using HTTP polling. No WebSocket required.
+Enables real-time audio sharing between devices. The backend acts as the single source of truth, storing the room state in a SQLite database. Members poll the backend to retrieve the latest state. There are no WebRTC connections or WebSockets used in this v1 architecture.
 
 ### Architecture Overview
 
 ```
 ┌─────────┐                 ┌──────────────┐                 ┌─────────┐
-│  Peer A  │   POST/GET     │   Backend    │    POST/GET     │  Peer B  │
-│ (Host)   │ ◄──── HTTP ──► │  SQLite DB   │ ◄──── HTTP ──► │ (Guest)  │
-└─────────┘   polling       └──────────────┘   polling       └─────────┘
-     │                             │                              │
-     └───── WebRTC P2P Audio ──────┼──────── WebRTC P2P Audio ────┘
-                                   │
-                            (signaling only,
-                             no media flows
-                             through server)
+│  Peer A │   PUT /state    │   Backend    │   GET /:code    │  Peer B │
+│ (Host)  │ ──── HTTP ───►  │  SQLite DB   │ ◄──── HTTP ───  │ (Member)│
+└─────────┘                 └──────────────┘   polling       └─────────┘
 ```
 
 **Flow:**
-1. Host creates a room → gets a 6-character `roomCode`
-2. Guest joins using the `roomCode`
-3. Both peers exchange SDP offer/answer + ICE candidates via `/signal` endpoints
-4. WebRTC peer connection is established directly between devices
-5. Peers send heartbeats to stay "online"; stale peers/rooms are auto-purged
+
+1. **Host** creates a room → gets a 6-character `roomCode` and initializes the room's playback `state`.
+2. **Member** joins using `POST /api/v1/rooms/:code/join`.
+3. **Members** repeatedly poll `GET /api/v1/rooms/:code` to fetch the updated player state and sync their local player.
+4. **Host** updates the state via `PUT /api/v1/rooms/:code/state` whenever there is a change (play, pause, seek, queue update).
 
 ### Database Storage
 
-Uses **better-sqlite3** (file-based, zero-config). The DB file `webrtc-signaling.db` is created in the backend root. Data is ephemeral — rooms expire after **2 hours**, signals after **5 minutes**.
+Uses **better-sqlite3**. The DB file `v1-rooms.db` is ephemeral — rooms expire after **2 hours**, peers are dropped after **120s** of inactivity.
 
-| Table      | Purpose                                     | Auto-Purge  |
-|------------|---------------------------------------------|-------------|
-| `rooms`    | Room codes, host info, expiry               | 2 hours     |
-| `peers`    | Peer membership per room + last-seen        | 60 s timeout|
-| `signals`  | SDP offers/answers + ICE candidates queued  | 5 minutes   |
+| Table   | Purpose                                   | Auto-Purge   |
+| ------- | ----------------------------------------- | ------------ |
+| `rooms` | Room codes, host info, state JSON, expiry | 2 hours      |
+| `peers` | Peer membership per room + last-seen      | 120s timeout |
 
 ---
 
 ### 9.1 Create Room
 
-**`POST /api/rooms`**
+**`POST /api/v1/rooms`**
 
-Creates a new listening room. The creator becomes the **host**. Returns a shareable room code.
+Creates a new listening room and sets the initial state.
 
 #### Request Body
 
-| Field         | Type   | Required | Description           |
-|---------------|--------|----------|-----------------------|
-| `displayName` | string | ✅        | Host's display name   |
-
-#### Example Request
-
-```bash
-curl -X POST http://localhost:4000/api/rooms \
-  -H "Content-Type: application/json" \
-  -d '{"displayName": "Santhosh"}'
-```
+| Field          | Type   | Required | Description                    |
+| -------------- | ------ | -------- | ------------------------------ |
+| `displayName`  | string | ✅       | Host's display name            |
+| `initialState` | object | optional | Initial playback & queue state |
 
 #### Response `201 Created`
 
 ```json
 {
   "roomCode": "A7X2QP",
-  "peerId": "550e8400-e29b-41d4-a716-446655440000",
+  "peerId": "550e8400-...",
   "expiresAt": 1741123200000,
   "message": "Room created. Share code \"A7X2QP\" with others to join."
 }
 ```
 
-#### Response `400 Bad Request`
-```json
-{ "error": "displayName is required (non-empty string)" }
-```
-
-#### Field Reference
-
-| Field       | Type   | Description                                          |
-|-------------|--------|------------------------------------------------------|
-| `roomCode`  | string | 6-character alphanumeric code (no ambiguous chars)   |
-| `peerId`    | string | UUID assigned to the host — store locally for all subsequent requests |
-| `expiresAt` | number | Unix timestamp (ms) when the room auto-expires       |
-
 ---
 
 ### 9.2 Join Room
 
-**`POST /api/rooms/:code/join`**
-
-Join an existing room using its code. Returns the peer list including the host.
-
-#### Path Parameter
-
-| Parameter | Type   | Required | Description             |
-|-----------|--------|----------|-------------------------|
-| `code`    | string | ✅        | Room code (case-insensitive) |
+**`POST /api/v1/rooms/:code/join`**
 
 #### Request Body
 
 | Field         | Type   | Required | Description           |
-|---------------|--------|----------|-----------------------|
-| `displayName` | string | ✅        | Joiner's display name |
-
-#### Example Request
-
-```bash
-curl -X POST http://localhost:4000/api/rooms/A7X2QP/join \
-  -H "Content-Type: application/json" \
-  -d '{"displayName": "Friend"}'
-```
+| ------------- | ------ | -------- | --------------------- |
+| `displayName` | string | ✅       | Member's display name |
+| `peerId`      | string | optional | Re-use existing ID    |
 
 #### Response `200 OK`
+
+Returns the current `state` of the room immediately upon joining.
 
 ```json
 {
   "roomCode": "A7X2QP",
-  "peerId": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-  "hostPeerId": "550e8400-e29b-41d4-a716-446655440000",
-  "peers": [
-    { "peerId": "550e8400-...", "displayName": "Santhosh", "isHost": true },
-    { "peerId": "6ba7b810-...", "displayName": "Friend", "isHost": false }
-  ]
-}
-```
-
-#### Response `404 Not Found`
-```json
-{ "error": "Room not found or expired" }
-```
-
----
-
-### 9.3 Get Room Info
-
-**`GET /api/rooms/:code`**
-
-Retrieve current room details and peer list. Useful for UI status display.
-
-#### Path Parameter
-
-| Parameter | Type   | Required | Description          |
-|-----------|--------|----------|----------------------|
-| `code`    | string | ✅        | Room code            |
-
-#### Example Request
-
-```bash
-curl http://localhost:4000/api/rooms/A7X2QP
-```
-
-#### Response `200 OK`
-
-```json
-{
-  "roomCode": "A7X2QP",
+  "peerId": "660e8400-...",
   "hostPeerId": "550e8400-...",
-  "createdAt": 1741116000000,
-  "expiresAt": 1741123200000,
+  "state": {
+    "currentSong": { ... },
+    "queue": [],
+    "isPlaying": true,
+    "playStartedAt": 1741123200000,
+    "updatedAt": 1741123200000
+  },
   "peers": [
-    {
-      "peerId": "550e8400-...",
-      "displayName": "Santhosh",
-      "isHost": true,
-      "lastSeen": 1741116050000,
-      "isOnline": true
-    },
-    {
-      "peerId": "6ba7b810-...",
-      "displayName": "Friend",
-      "isHost": false,
-      "lastSeen": 1741116045000,
-      "isOnline": true
-    }
+    { "peerId": "550e...", "displayName": "Host", "isHost": true },
+    { "peerId": "660e...", "displayName": "Member", "isHost": false }
   ]
 }
 ```
 
 ---
 
-### 9.4 Close Room (Host Only)
+### 9.3 Get Room State (Polling Endpoint)
 
-**`DELETE /api/rooms/:code`**
+**`GET /api/v1/rooms/:code?peerId=<your-peer-id>`**
 
-Closes the room and removes all peers + signals. Only the host can close the room.
+Members poll this endpoint (e.g., every 4 seconds) to receive the latest queue and playback state. Including `peerId` updates the member's last-seen heartbeat.
+
+#### Response `200 OK`
+
+```json
+{
+  "roomCode": "A7X2QP",
+  "hostPeerId": "550e...",
+  "state": {
+    "currentSong": { ... },
+    "queue": [],
+    "queueIndex": 0,
+    "isPlaying": true,
+    "repeatMode": "off",
+    "isShuffled": false,
+    "playStartedAt": 1741123200000,
+    "updatedAt": 1741123200000
+  },
+  "peers": [
+    { "peerId": "...", "displayName": "Host", "isHost": true, "isOnline": true }
+  ]
+}
+```
+
+---
+
+### 9.4 Update Room State (Host Only)
+
+**`PUT /api/v1/rooms/:code/state`**
+
+Pushes the latest state from the Host to the Backend.
 
 #### Request Body
 
-| Field    | Type   | Required | Description          |
-|----------|--------|----------|----------------------|
-| `peerId` | string | ✅        | Must be the host's peerId |
-
-#### Example Request
-
-```bash
-curl -X DELETE http://localhost:4000/api/rooms/A7X2QP \
-  -H "Content-Type: application/json" \
-  -d '{"peerId": "550e8400-..."}'
-```
+| Field    | Type   | Required | Description      |
+| -------- | ------ | -------- | ---------------- |
+| `peerId` | string | ✅       | Host's peer ID   |
+| `state`  | object | ✅       | New state object |
 
 #### Response `200 OK`
-```json
-{ "message": "Room closed" }
-```
 
-#### Response `403 Forbidden`
 ```json
-{ "error": "Only the host can close the room" }
+{ "message": "State updated successfully" }
 ```
 
 ---
 
 ### 9.5 Leave Room
 
-**`POST /api/rooms/:code/leave`**
+**`POST /api/v1/rooms/:code/leave`**
 
-Removes the peer from the room. If the **host** leaves, the entire room is closed.
+Removes the peer. If the host leaves, the room is closed for everyone.
 
 #### Request Body
 
-| Field    | Type   | Required | Description |
-|----------|--------|----------|-------------|
-| `peerId` | string | ✅        | Your peerId |
-
-#### Example Request
-
-```bash
-curl -X POST http://localhost:4000/api/rooms/A7X2QP/leave \
-  -H "Content-Type: application/json" \
-  -d '{"peerId": "6ba7b810-..."}'
-```
-
-#### Response `200 OK`
-```json
-{ "message": "Left room" }
-```
-Or if the host leaves:
-```json
-{ "message": "Host left — room closed" }
-```
+| Field    | Type   | Required | Description     |
+| -------- | ------ | -------- | --------------- |
+| `peerId` | string | ✅       | Leaving peer ID |
 
 ---
 
-### 9.6 Heartbeat
+### 9.6 Close Room (Host Only)
 
-**`POST /api/rooms/:code/heartbeat`**
+**`DELETE /api/v1/rooms/:code`**
 
-Send a keep-alive ping. Peers that don't heartbeat within **60 seconds** are marked offline and eventually purged. Returns the current peer list with online status.
-
-> **Recommended interval:** Call every **10–15 seconds** from the frontend.
+Deletes the room from the backend database.
 
 #### Request Body
 
-| Field    | Type   | Required | Description |
-|----------|--------|----------|-------------|
-| `peerId` | string | ✅        | Your peerId |
+| Field    | Type   | Required | Description    |
+| -------- | ------ | -------- | -------------- |
+| `peerId` | string | ✅       | Host's peer ID |
 
-#### Example Request
+---
 
-```bash
-curl -X POST http://localhost:4000/api/rooms/A7X2QP/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"peerId": "550e8400-..."}'
-```
+### 9.7 Register FCM Token
+
+**`PUT /api/v1/rooms/:code/fcm-token`**
+
+Registers or updates a peer's Firebase web push token for room events.
+
+#### Request Body
+
+| Field    | Type   | Required | Description         |
+| -------- | ------ | -------- | ------------------- |
+| `peerId` | string | ✅       | Peer ID in the room |
+| `token`  | string | ✅       | FCM token           |
 
 #### Response `200 OK`
 
 ```json
-{
-  "peers": [
-    { "peerId": "550e8400-...", "displayName": "Santhosh", "isHost": true, "isOnline": true },
-    { "peerId": "6ba7b810-...", "displayName": "Friend", "isHost": false, "isOnline": true }
-  ]
-}
+{ "message": "FCM token registered" }
 ```
 
 ---
 
-### 9.7 Send Signal
+### 9.8 ACK Presence / Delivery
 
-**`POST /api/rooms/:code/signal`**
+**`POST /api/v1/rooms/:code/ack`**
 
-Send an SDP offer, SDP answer, or ICE candidate to a specific peer. The data is queued in the database and delivered when the target peer polls.
+Marks the peer online and records that an event has been handled.
 
 #### Request Body
 
-| Field          | Type          | Required | Description                                          |
-|----------------|---------------|----------|------------------------------------------------------|
-| `peerId`       | string        | ✅        | Sender's peerId                                      |
-| `targetPeerId` | string        | ✅        | Recipient's peerId                                   |
-| `type`         | string        | ✅        | One of: `offer`, `answer`, `ice-candidate`           |
-| `payload`      | object/string | ✅        | The SDP or ICE candidate data (stored as JSON)       |
-
-#### Example Request — SDP Offer
-
-```bash
-curl -X POST http://localhost:4000/api/rooms/A7X2QP/signal \
-  -H "Content-Type: application/json" \
-  -d '{
-    "peerId": "550e8400-...",
-    "targetPeerId": "6ba7b810-...",
-    "type": "offer",
-    "payload": {
-      "type": "offer",
-      "sdp": "v=0\r\no=- 123456 2 IN IP4 127.0.0.1\r\n..."
-    }
-  }'
-```
-
-#### Example Request — ICE Candidate
-
-```bash
-curl -X POST http://localhost:4000/api/rooms/A7X2QP/signal \
-  -H "Content-Type: application/json" \
-  -d '{
-    "peerId": "550e8400-...",
-    "targetPeerId": "6ba7b810-...",
-    "type": "ice-candidate",
-    "payload": {
-      "candidate": "candidate:842163049 1 udp ...",
-      "sdpMid": "0",
-      "sdpMLineIndex": 0
-    }
-  }'
-```
-
-#### Response `201 Created`
-```json
-{ "message": "Signal queued" }
-```
-
-#### Response `400 Bad Request`
-```json
-{ "error": "type must be one of: offer, answer, ice-candidate" }
-```
-
----
-
-### 9.8 Poll Signals
-
-**`GET /api/rooms/:code/signal?peerId=<your-peer-id>`**
-
-Poll for pending signals addressed to your peer. Signals are returned in chronological order and **marked as consumed** — they won't appear again. Also refreshes your heartbeat automatically.
-
-> **Recommended interval:** Poll every **1–2 seconds** during connection setup; slow to **5 seconds** once connected.
-
-#### Query Parameters
-
-| Parameter | Type   | Required | Description      |
-|-----------|--------|----------|------------------|
-| `peerId`  | string | ✅        | Your peerId      |
-
-#### Example Request
-
-```bash
-curl "http://localhost:4000/api/rooms/A7X2QP/signal?peerId=6ba7b810-..."
-```
+| Field     | Type   | Required | Description                         |
+| --------- | ------ | -------- | ----------------------------------- |
+| `peerId`  | string | ✅       | Peer ID in the room                 |
+| `eventId` | string | optional | Event ID from push payload (if any) |
 
 #### Response `200 OK`
 
 ```json
 {
-  "signals": [
-    {
-      "fromPeer": "550e8400-...",
-      "toPeer": "6ba7b810-...",
-      "type": "offer",
-      "payload": {
-        "type": "offer",
-        "sdp": "v=0\r\n..."
-      },
-      "createdAt": 1741116100000
-    },
-    {
-      "fromPeer": "550e8400-...",
-      "toPeer": "6ba7b810-...",
-      "type": "ice-candidate",
-      "payload": {
-        "candidate": "candidate:842163049 ...",
-        "sdpMid": "0",
-        "sdpMLineIndex": 0
-      },
-      "createdAt": 1741116101000
-    }
-  ]
-}
-```
-
-> When no signals are pending, `signals` is an empty array `[]`.
-
----
-
-### 9.9 WebRTC Data Schemas
-
-#### Room Response Object
-```ts
-interface RoomResponse {
-  roomCode: string;        // 6-char uppercase alphanumeric
-  peerId: string;          // UUID assigned to you
-  hostPeerId: string;      // UUID of the room host
-  expiresAt: number;       // Unix ms
-  peers: PeerInfo[];
-}
-```
-
-#### Peer Info Object
-```ts
-interface PeerInfo {
-  peerId: string;
-  displayName: string;
-  isHost: boolean;
-  lastSeen?: number;       // Unix ms — present in GET /rooms/:code
-  isOnline?: boolean;      // true if lastSeen < 60s ago
-}
-```
-
-#### Signal Object
-```ts
-interface Signal {
-  fromPeer: string;
-  toPeer: string;
-  type: 'offer' | 'answer' | 'ice-candidate';
-  payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
-  createdAt: number;       // Unix ms
+  "message": "ACK accepted",
+  "roomCode": "ABC123",
+  "peerId": "uuid",
+  "eventId": "evt-uuid",
+  "ackAt": 1741170000000
 }
 ```
 
 ---
 
-### 9.10 WebRTC Frontend Integration Guide
+### 9.9 Host Online Check
 
-#### Step-by-Step Connection Flow
+**`GET /api/v1/rooms/:code/host-online`**
 
-```
-Host                              Backend                           Guest
- │                                   │                                │
- │  POST /api/rooms                  │                                │
- │ ──────────────────────────────►   │                                │
- │  ◄── { roomCode, peerId }        │                                │
- │                                   │                                │
- │                                   │  POST /api/rooms/:code/join    │
- │                                   │  ◄────────────────────────────  │
- │                                   │  ──► { peerId, peers }         │
- │                                   │                                │
- │  createOffer()                    │                                │
- │  POST /signal (type=offer)        │                                │
- │ ──────────────────────────────►   │                                │
- │                                   │  GET /signal?peerId=guest      │
- │                                   │  ◄────────────────────────────  │
- │                                   │  ──► { signals: [offer] }      │
- │                                   │                                │
- │                                   │  createAnswer()                │
- │                                   │  POST /signal (type=answer)    │
- │                                   │  ◄────────────────────────────  │
- │  GET /signal?peerId=host          │                                │
- │ ──────────────────────────────►   │                                │
- │  ◄── { signals: [answer] }       │                                │
- │                                   │                                │
- │  ◄─── ICE candidates exchanged via same POST/GET /signal ──────►  │
- │                                   │                                │
- │  ◄════════ WebRTC P2P Audio Connected ════════►                   │
-```
+Returns host online/offline based on recent ACK activity.
 
-#### Sample Frontend Implementation
+#### Response `200 OK`
 
-```javascript
-// ── 1. Create or Join a Room ─────────────────────────────────────────
-const API = 'http://localhost:4000/api';
-
-async function createRoom(displayName) {
-  const res = await fetch(`${API}/rooms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName }),
-  });
-  return res.json(); // { roomCode, peerId, expiresAt }
-}
-
-async function joinRoom(code, displayName) {
-  const res = await fetch(`${API}/rooms/${code}/join`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName }),
-  });
-  return res.json(); // { roomCode, peerId, hostPeerId, peers }
-}
-
-// ── 2. Signal Exchange ───────────────────────────────────────────────
-async function sendSignal(roomCode, peerId, targetPeerId, type, payload) {
-  await fetch(`${API}/rooms/${roomCode}/signal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ peerId, targetPeerId, type, payload }),
-  });
-}
-
-async function pollSignals(roomCode, peerId) {
-  const res = await fetch(`${API}/rooms/${roomCode}/signal?peerId=${peerId}`);
-  const { signals } = await res.json();
-  return signals;
-}
-
-// ── 3. WebRTC Connection ─────────────────────────────────────────────
-async function connectToPeer(roomCode, myPeerId, remotePeerId) {
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-  });
-
-  // Send ICE candidates to remote peer via backend
-  pc.onicecandidate = ({ candidate }) => {
-    if (candidate) {
-      sendSignal(roomCode, myPeerId, remotePeerId, 'ice-candidate', candidate);
-    }
-  };
-
-  // Create and send offer
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await sendSignal(roomCode, myPeerId, remotePeerId, 'offer', offer);
-
-  // Poll for answer + ICE from remote
-  const pollInterval = setInterval(async () => {
-    const signals = await pollSignals(roomCode, myPeerId);
-    for (const signal of signals) {
-      if (signal.type === 'answer') {
-        await pc.setRemoteDescription(signal.payload);
-      } else if (signal.type === 'ice-candidate') {
-        await pc.addIceCandidate(signal.payload);
-      }
-    }
-    if (pc.connectionState === 'connected') clearInterval(pollInterval);
-  }, 1500);
-
-  return pc;
-}
-
-// ── 4. Heartbeat ─────────────────────────────────────────────────────
-function startHeartbeat(roomCode, peerId) {
-  return setInterval(() => {
-    fetch(`${API}/rooms/${roomCode}/heartbeat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ peerId }),
-    }).catch(console.error);
-  }, 12_000);  // every 12 seconds
+```json
+{
+  "roomCode": "ABC123",
+  "hostPeerId": "uuid",
+  "isHostOnline": true,
+  "hostLastAckAt": 1741170000000,
+  "ttlMs": 90000
 }
 ```
-
-#### Polling Intervals Guide
-
-| Phase                   | Endpoint        | Interval     |
-|-------------------------|-----------------|--------------|
-| Connection setup        | `GET /signal`   | 1–2 seconds  |
-| Post-connection         | `GET /signal`   | 5 seconds    |
-| Always                  | `POST /heartbeat` | 10–15 seconds |
-| UI status update        | `GET /rooms/:code` | 5–10 seconds |
 
 ---
 
-*Last updated: 2026-03-05 · M14U Backend v1.1*
+### 9.10 Queue Update Fanout
 
+Host `PUT /api/v1/rooms/:code/state` now also triggers member FCM data events (`type=queue_update`).
+
+- Backend remains source of truth with full state snapshot in DB.
+- FCM carries lightweight event metadata (`eventId`, `queueVersion`).
+- Members fetch latest DB state and ACK handled events.
+
+---
+
+### 9.11 Send Client Logs
+
+**`POST /api/v1/rooms/:code/logs`**
+
+Allows the frontend to send sync debugging logs to the server. The logs will be saved as a JSON file in the `backend/logs` directory.
+
+#### Request Body
+
+| Field          | Type   | Required | Description                     |
+| -------------- | ------ | -------- | ------------------------------- |
+| `displayName`  | string | ✅       | Display name of the user        |
+| `logs`         | array  | ✅       | Array of JSON sync log entries  |
+
+#### Response `200 OK`
+
+```json
+{ "message": "Logs saved" }
+```
+
+---
+
+_Last updated: 2026-03-05 · M14U Backend v1.5 (ACK Presence + FCM Room Events + Log Store)_

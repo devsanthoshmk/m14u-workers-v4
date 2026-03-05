@@ -11,6 +11,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    // host: false,
+    // watch: null,
+    // Allow Cloudflare tunnel domains (and any other reverse proxy) to pass
+    // Vite's host check. `true` permits all hosts without hardcoding ephemeral URLs.
+    allowedHosts: true,
+  },
 })
-
-

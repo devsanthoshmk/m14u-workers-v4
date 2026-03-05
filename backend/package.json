@@ -18,6 +18,8 @@
     "crypto-random-string": "^5.0.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "firebase": "^12.10.0",
+    "firebase-admin": "^13.6.0",
     "morgan": "^1.10.1",
     "node-cache": "^5.1.2",
     "youtube-dl-exec": "^3.1.3",

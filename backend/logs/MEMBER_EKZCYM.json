@@ -1,0 +1,60 @@
+[
+  {
+    "timestamp": 1772738956168,
+    "level": "info",
+    "category": "Room",
+    "message": "Restoring session: room=EKZCYM, isHost=false"
+  },
+  {
+    "timestamp": 1772738956535,
+    "level": "info",
+    "category": "Room",
+    "message": "Joining room EKZCYM as \"MEMBER\""
+  },
+  {
+    "timestamp": 1772738956536,
+    "level": "info",
+    "category": "API",
+    "message": "Joining room EKZCYM as \"MEMBER\""
+  },
+  {
+    "timestamp": 1772738957305,
+    "level": "info",
+    "category": "API",
+    "message": "Joined room EKZCYM",
+    "data": {
+      "peerId": "30159c3a-4f28-4617-a469-8cd8fb164caa",
+      "peerCount": 8
+    }
+  },
+  {
+    "timestamp": 1772738958834,
+    "level": "info",
+    "category": "Clock",
+    "message": "Member offset calibrated: local-server≈-51ms (rtt≈145ms)"
+  },
+  {
+    "timestamp": 1772738958836,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Premalo (From \"Court\")\", base=135.40s, target=135.40s, hostNowMs=1772738958555.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772738958836,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=135.40s, drift=135.40s"
+  },
+  {
+    "timestamp": 1772738959191,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room EKZCYM — 8 peer(s)"
+  },
+  {
+    "timestamp": 1772739102109,
+    "level": "info",
+    "category": "Room",
+    "message": "Leaving room EKZCYM"
+  }
+]

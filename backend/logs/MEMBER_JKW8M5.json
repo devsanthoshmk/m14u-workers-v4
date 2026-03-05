@@ -1,0 +1,596 @@
+[
+  {
+    "timestamp": 1772740425429,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Starboy (feat. Daft Punk)\", base=9.93s, target=32.74s, hostNowMs=1772740425140.6, songChanged=false"
+  },
+  {
+    "timestamp": 1772740425430,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=32.74s, drift=32.74s"
+  },
+  {
+    "timestamp": 1772740426161,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 6 peer(s)"
+  },
+  {
+    "timestamp": 1772740446948,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=0.00s, hostNowMs=1772740446659.6, songChanged=true"
+  },
+  {
+    "timestamp": 1772740446951,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"Coolie Disco (From \"Coolie\")\" — initialSeek=0.00s"
+  },
+  {
+    "timestamp": 1772740448617,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=0.93s, hostNowMs=1772740448328.6, songChanged=false"
+  },
+  {
+    "timestamp": 1772740448618,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=0.93s, drift=0.93s"
+  },
+  {
+    "timestamp": 1772740449103,
+    "level": "info",
+    "category": "Sync",
+    "message": "Seeked to 0.00s after loading (decode/buffer=2155ms, calibratedLatency=0ms)"
+  },
+  {
+    "timestamp": 1772740463246,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Coolie Disco (From \"Coolie\")\", base=13.70s, target=13.70s, hostNowMs=1772740462957.6, songChanged=false"
+  },
+  {
+    "timestamp": 1772740463247,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=13.70s, drift=13.70s"
+  },
+  {
+    "timestamp": 1772740465957,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Coolie Disco (From \"Coolie\")\", base=13.70s, target=14.73s, hostNowMs=1772740465668.6, songChanged=false"
+  },
+  {
+    "timestamp": 1772740465958,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=13.70s, target=14.73s, drift=1.03s"
+  },
+  {
+    "timestamp": 1772740479160,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Coolie Disco (From \"Coolie\")\", base=13.70s, target=27.89s, hostNowMs=1772740478832.1, songChanged=false"
+  },
+  {
+    "timestamp": 1772740479161,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=27.89s, drift=27.89s"
+  },
+  {
+    "timestamp": 1772740479911,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 7 peer(s)"
+  },
+  {
+    "timestamp": 1772740484892,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=1.26s, hostNowMs=1772740484564.1, songChanged=false"
+  },
+  {
+    "timestamp": 1772740484894,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=1.26s, drift=1.26s"
+  },
+  {
+    "timestamp": 1772740510539,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=26.92s, hostNowMs=1772740510224.2, songChanged=false"
+  },
+  {
+    "timestamp": 1772740510540,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=26.92s, drift=26.92s"
+  },
+  {
+    "timestamp": 1772740511280,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 9 peer(s)"
+  },
+  {
+    "timestamp": 1772740529367,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=45.76s, hostNowMs=1772740529064.2, songChanged=false"
+  },
+  {
+    "timestamp": 1772740529367,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=45.76s, drift=45.76s"
+  },
+  {
+    "timestamp": 1772740576312,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Coolie Disco (From \"Coolie\")\", base=0.00s, target=92.70s, hostNowMs=1772740576007.4, songChanged=false"
+  },
+  {
+    "timestamp": 1772740576313,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=92.71s, drift=92.71s"
+  },
+  {
+    "timestamp": 1772740577030,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 11 peer(s)"
+  },
+  {
+    "timestamp": 1772740583830,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=0.00s, target=0.00s, hostNowMs=1772740583525.4, songChanged=true"
+  },
+  {
+    "timestamp": 1772740583832,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"Aaja Raja (From \"KH x RK Reunion\")\" — initialSeek=0.00s"
+  },
+  {
+    "timestamp": 1772740585636,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=0.00s, target=0.92s, hostNowMs=1772740585330.4, songChanged=false"
+  },
+  {
+    "timestamp": 1772740585636,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=0.92s, drift=0.92s"
+  },
+  {
+    "timestamp": 1772740585685,
+    "level": "error",
+    "category": "Sync",
+    "message": "Failed to load song: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585717,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585719,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585720,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585721,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585751,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585752,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585798,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740585811,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740634885,
+    "level": "info",
+    "category": "Clock",
+    "message": "Member offset calibrated: local-server≈-97ms (rtt≈349ms)"
+  },
+  {
+    "timestamp": 1772740634886,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"23 Theme (From \"AA23\")\", base=3.18s, target=3.18s, hostNowMs=1772740634594.3, songChanged=true"
+  },
+  {
+    "timestamp": 1772740634887,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"23 Theme (From \"AA23\")\" — initialSeek=3.18s"
+  },
+  {
+    "timestamp": 1772740635416,
+    "level": "info",
+    "category": "Sync",
+    "message": "Seeked to 3.18s after loading (decode/buffer=3079ms, calibratedLatency=0ms)"
+  },
+  {
+    "timestamp": 1772740639658,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 11 peer(s)"
+  },
+  {
+    "timestamp": 1772740650864,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"23 Theme (From \"AA23\")\", base=3.18s, target=4.80s, hostNowMs=1772740650572.3, songChanged=false"
+  },
+  {
+    "timestamp": 1772740650865,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=3.18s, target=4.80s, drift=1.62s"
+  },
+  {
+    "timestamp": 1772740684195,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=0.00s, target=0.00s, hostNowMs=1772740683903.3, songChanged=true"
+  },
+  {
+    "timestamp": 1772740684196,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"Aaja Raja (From \"KH x RK Reunion\")\" — initialSeek=0.00s"
+  },
+  {
+    "timestamp": 1772740684924,
+    "level": "error",
+    "category": "Sync",
+    "message": "Failed to load song: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772740686253,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=0.00s, target=1.10s, hostNowMs=1772740685961.3, songChanged=false"
+  },
+  {
+    "timestamp": 1772740686253,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=40.02s, target=1.10s, drift=38.92s"
+  },
+  {
+    "timestamp": 1772740706958,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=19.25s, target=19.25s, hostNowMs=1772740706666.3, songChanged=false"
+  },
+  {
+    "timestamp": 1772740706959,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=5.12s, target=19.25s, drift=14.13s"
+  },
+  {
+    "timestamp": 1772740728480,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=19.25s, target=19.25s, hostNowMs=1772740728108.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772740728481,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=19.25s, drift=19.25s"
+  },
+  {
+    "timestamp": 1772740728715,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 12 peer(s)"
+  },
+  {
+    "timestamp": 1772740806625,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Aaja Raja (From \"KH x RK Reunion\")\", base=0.00s, target=0.00s, hostNowMs=1772740806253.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772740874769,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Arasan Theme\", base=0.00s, target=1.52s, hostNowMs=1772740874397.7, songChanged=true"
+  },
+  {
+    "timestamp": 1772740874770,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"Arasan Theme\" — initialSeek=1.52s"
+  },
+  {
+    "timestamp": 1772740875069,
+    "level": "info",
+    "category": "Sync",
+    "message": "Seeked to 1.82s after loading (decode/buffer=300ms, calibratedLatency=0ms)"
+  },
+  {
+    "timestamp": 1772740903386,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Arasan Theme\", base=28.69s, target=28.69s, hostNowMs=1772740903014.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772740903387,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=29.99s, target=28.69s, drift=1.30s"
+  },
+  {
+    "timestamp": 1772740905460,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Arasan Theme\", base=28.84s, target=29.34s, hostNowMs=1772740905088.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772740905461,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=28.69s, target=29.34s, drift=0.65s"
+  },
+  {
+    "timestamp": 1772740929398,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Arasan Theme\", base=51.84s, target=51.84s, hostNowMs=1772740929026.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772740929398,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=53.14s, target=51.84s, drift=1.30s"
+  },
+  {
+    "timestamp": 1772741184087,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Arasan Theme\", base=51.84s, target=51.84s, hostNowMs=1772741183710.5, songChanged=false"
+  },
+  {
+    "timestamp": 1772741184088,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=51.84s, drift=51.84s"
+  },
+  {
+    "timestamp": 1772741184386,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 13 peer(s)"
+  },
+  {
+    "timestamp": 1772741267164,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Arasan Theme\", base=51.84s, target=51.84s, hostNowMs=1772741266787.5, songChanged=false"
+  },
+  {
+    "timestamp": 1772741267166,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=51.84s, drift=51.84s"
+  },
+  {
+    "timestamp": 1772741296016,
+    "level": "info",
+    "category": "Visibility",
+    "message": "Tab visible — member polling immediately"
+  },
+  {
+    "timestamp": 1772741296017,
+    "level": "info",
+    "category": "Room",
+    "message": "Reconnecting…"
+  },
+  {
+    "timestamp": 1772741297841,
+    "level": "info",
+    "category": "Clock",
+    "message": "Member offset re-calibrated: local-server≈-16ms (rtt≈139ms)"
+  },
+  {
+    "timestamp": 1772741298082,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [reconnect] — song=\"Arasan Theme\", base=51.84s, target=51.84s, hostNowMs=1772741297708.8, songChanged=false"
+  },
+  {
+    "timestamp": 1772741298083,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=51.84s, drift=51.84s"
+  },
+  {
+    "timestamp": 1772741324364,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Arasan Theme\", base=51.84s, target=51.84s, hostNowMs=1772741324013.4, songChanged=false"
+  },
+  {
+    "timestamp": 1772741324366,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=51.84s, drift=51.84s"
+  },
+  {
+    "timestamp": 1772741324713,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 14 peer(s)"
+  },
+  {
+    "timestamp": 1772741325721,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Blinding Lights\", base=0.00s, target=0.00s, hostNowMs=1772741325370.4, songChanged=true"
+  },
+  {
+    "timestamp": 1772741325722,
+    "level": "info",
+    "category": "Sync",
+    "message": "Loading new song \"Blinding Lights\" — initialSeek=0.00s"
+  },
+  {
+    "timestamp": 1772741327524,
+    "level": "error",
+    "category": "Sync",
+    "message": "Failed to load song: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772741327650,
+    "level": "warn",
+    "category": "FCM",
+    "message": "Event handling failed: NetworkError when attempting to fetch resource."
+  },
+  {
+    "timestamp": 1772741352081,
+    "level": "info",
+    "category": "Visibility",
+    "message": "Tab visible — member polling immediately"
+  },
+  {
+    "timestamp": 1772741352082,
+    "level": "info",
+    "category": "Room",
+    "message": "Reconnecting…"
+  },
+  {
+    "timestamp": 1772741353824,
+    "level": "info",
+    "category": "Clock",
+    "message": "Member offset re-calibrated: local-server≈-33ms (rtt≈113ms)"
+  },
+  {
+    "timestamp": 1772741354068,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [reconnect] — song=\"Blinding Lights\", base=0.00s, target=0.00s, hostNowMs=1772741353712.5, songChanged=false"
+  },
+  {
+    "timestamp": 1772741504098,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [fcm] — song=\"Blinding Lights\", base=174.48s, target=176.02s, hostNowMs=1772741503742.5, songChanged=false"
+  },
+  {
+    "timestamp": 1772741504100,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=176.02s, drift=176.02s"
+  },
+  {
+    "timestamp": 1772741537988,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Blinding Lights\", base=174.48s, target=209.91s, hostNowMs=1772741537631.2, songChanged=false"
+  },
+  {
+    "timestamp": 1772741537989,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=209.91s, drift=209.91s"
+  },
+  {
+    "timestamp": 1772741538307,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 15 peer(s)"
+  },
+  {
+    "timestamp": 1772741725995,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [join] — song=\"Blinding Lights\", base=174.48s, target=397.91s, hostNowMs=1772741725632.3, songChanged=false"
+  },
+  {
+    "timestamp": 1772741725996,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=397.91s, drift=397.91s"
+  },
+  {
+    "timestamp": 1772741726335,
+    "level": "info",
+    "category": "Room",
+    "message": "Joined room JKW8M5 — 16 peer(s)"
+  },
+  {
+    "timestamp": 1772741892823,
+    "level": "info",
+    "category": "Visibility",
+    "message": "Tab visible — member polling immediately"
+  },
+  {
+    "timestamp": 1772741892826,
+    "level": "info",
+    "category": "Room",
+    "message": "Reconnecting…"
+  },
+  {
+    "timestamp": 1772741896878,
+    "level": "info",
+    "category": "Clock",
+    "message": "Member offset re-calibrated: local-server≈-34ms (rtt≈189ms)"
+  },
+  {
+    "timestamp": 1772741897245,
+    "level": "info",
+    "category": "Sync",
+    "message": "Applying [reconnect] — song=\"Blinding Lights\", base=174.48s, target=569.17s, hostNowMs=1772741896889.7, songChanged=false"
+  },
+  {
+    "timestamp": 1772741897246,
+    "level": "info",
+    "category": "Sync",
+    "message": "Drift correction: current=0.00s, target=569.17s, drift=569.17s"
+  }
+]

@@ -1,0 +1,17 @@
+meta {
+  name: V1 Leave Room
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{baseUrl}}/api/v1/rooms/{{roomCode}}/leave
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "peerId": "{{memberPeerId}}"
+  }
+}

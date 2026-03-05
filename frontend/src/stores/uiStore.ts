@@ -23,11 +23,16 @@ interface UIStore {
     // Mobile now playing
     isNowPlayingExpanded: boolean;
 
+    // Listen Along room panel
+    isRoomPanelOpen: boolean;
+
     // Actions
     toggleQueue: () => void;
     setQueueOpen: (open: boolean) => void;
     toggleLyrics: () => void;
     setLyricsOpen: (open: boolean) => void;
+    toggleRoomPanel: () => void;
+    setRoomPanelOpen: (open: boolean) => void;
     toggleSidebar: () => void;
     setSidebarOpen: (open: boolean) => void;
     setSearchFocused: (focused: boolean) => void;
@@ -50,18 +55,31 @@ export const useUIStore = create<UIStore>()(
             onboardingDone: false,
             recentSearches: [],
             isNowPlayingExpanded: false,
+            isRoomPanelOpen: false,
 
             toggleQueue: () => set(s => ({
                 isQueueOpen: !s.isQueueOpen,
                 isLyricsOpen: !s.isQueueOpen ? false : s.isLyricsOpen,
+                isRoomPanelOpen: !s.isQueueOpen ? false : s.isRoomPanelOpen,
             })),
             setQueueOpen: (open) => set({ isQueueOpen: open }),
 
             toggleLyrics: () => set(s => ({
                 isLyricsOpen: !s.isLyricsOpen,
                 isQueueOpen: !s.isLyricsOpen ? false : s.isQueueOpen,
+                isRoomPanelOpen: !s.isLyricsOpen ? false : s.isRoomPanelOpen,
             })),
             setLyricsOpen: (open) => set({ isLyricsOpen: open }),
+
+            toggleRoomPanel: () => set(s => ({
+                isRoomPanelOpen: !s.isRoomPanelOpen,
+                isQueueOpen: !s.isRoomPanelOpen ? false : s.isQueueOpen,
+                isLyricsOpen: !s.isRoomPanelOpen ? false : s.isLyricsOpen,
+            })),
+            setRoomPanelOpen: (open) => set({
+                isRoomPanelOpen: open,
+                ...(open ? { isQueueOpen: false, isLyricsOpen: false } : {}),
+            }),
 
             toggleSidebar: () => set(s => ({ isSidebarOpen: !s.isSidebarOpen })),
             setSidebarOpen: (open) => set({ isSidebarOpen: open }),
