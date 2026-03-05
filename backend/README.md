@@ -167,3 +167,14 @@ npx @usebruno/cli run --env local
 ```
 (Ensure the local server is running before executing.)
 
+## Deployment
+
+The backend is configured to be deployed on **Railway** using **Railpack**. A `railway.toml` file is included in the root of the backend directory.
+
+### Railway Configuration
+The included `railway.toml` uses Railpack version `0.17.2` to natively detect the Node.js environment and `pnpm` package manager. It automatically runs `pnpm start`.
+
+To deploy:
+1. Initialize a project on Railway (e.g., from your GitHub repository).
+2. Point the root directory to `backend/` if deploying as a monorepo, or deploy this directory directly.
+3. Add your Firebase credentials and any other required environment variables to the Railway environment variables dashboard.
