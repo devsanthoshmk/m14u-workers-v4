@@ -1,1 +1,0 @@
-/home/santhoshmk/.config/opencode/skill/frontend-design/SKILL.md

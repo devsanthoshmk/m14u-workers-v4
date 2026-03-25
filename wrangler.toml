@@ -1,0 +1,10 @@
+name = "m14u-api"
+main = "src/backend/worker.ts"
+compatibility_date = "2026-03-05"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[env.production]
+routes = [{ pattern = "api.m14u.pages.dev" }]
