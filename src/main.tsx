@@ -4,9 +4,11 @@ import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
 import { initializePlayerStore } from '@/stores/playerStore';
+import { registerConsoleAPI } from '@/lib/testing';
 
 // Initialize player store before React renders
 initializePlayerStore();
+registerConsoleAPI();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

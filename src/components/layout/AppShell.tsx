@@ -6,8 +6,8 @@
  * Psychology: Spatial consistency — users always know where everything lives.
  */
 
-import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
 import { PlayerBar } from '@/components/player/PlayerBar';
@@ -18,6 +18,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { usePlayerStore } from '@/stores/playerStore';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { routerRef } from '@/lib/testing/router-ref';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { HomePage } from '@/pages/HomePage';
@@ -46,7 +47,13 @@ export function AppShell() {
     useKeyboardShortcuts();
     useMediaSession();
 
+    const navigate = useNavigate();
     const location = useLocation();
+
+    // Set router ref for console testing API
+    useEffect(() => {
+        routerRef.set(navigate, location);
+    }, [navigate, location]);
     const isQueueOpen = useUIStore(s => s.isQueueOpen);
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
     const onboardingDone = useUIStore(s => s.onboardingDone);
