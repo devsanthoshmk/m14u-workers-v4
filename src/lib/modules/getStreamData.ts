@@ -5,7 +5,8 @@ const instances = [
   "https://invidious.fdn.fr",
   "https://invidious.kavin.rocks",
   "https://yt.omada.cafe",
-  "https://invidious.lunar.icu"
+  "https://invidious.lunar.icu",
+  "https://lekker.gay"
 ];
 
 const streamCache = new Map<string, { data: Invidious; timestamp: number }>();
