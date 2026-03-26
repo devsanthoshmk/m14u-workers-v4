@@ -1,5 +1,6 @@
 import type { AudioStream } from '@/types/music';
 import { usePlayerStore } from '@/stores/playerStore';
+import { isNative } from '@/lib/utils/platform';
 
 const instances = [
   "https://yt.omada.cafe",
@@ -51,6 +52,10 @@ export function proxyHandler(url: string, proxy: string): string {
 }
 
 export function audioProxyHandler(url: string): string {
+  if (isNative()) {
+    console.log('Running in native environment, skipping proxy');
+    return url
+  };
   const proxy = usePlayerStore.getState().proxy || instances[0];
   const link = new URL(url);
   const origin = link.origin;

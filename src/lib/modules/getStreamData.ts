@@ -1,5 +1,7 @@
 import { usePlayerStore } from '@/stores/playerStore';
 import type { AudioStream } from '@/types/music';
+import { isNative } from '@/lib/utils/platform';
+import StreamExtractor from '@/plugins/StreamExtractor';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -28,6 +30,17 @@ export default async function getStreamData(
   const cached = streamCache.get(id);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.data;
+  }
+
+  if (isNative()) {
+    try {
+      const nativeData = await StreamExtractor.getStreamData({ videoId: id });
+      const result = nativeData as unknown as Invidious;
+      streamCache.set(id, { data: result, timestamp: Date.now() });
+      return result;
+    } catch (e) {
+      console.warn('Native extraction failed, falling back to Invidious:', e);
+    }
   }
 
   const fetchData = async (proxy: string): Promise<Invidious> => {
