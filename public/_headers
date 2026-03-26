@@ -1,0 +1,14 @@
+/*
+  Content-Type: text/html
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/*.js
+  Content-Type: application/javascript
+
+/*.css
+  Content-Type: text/css
+
+/*.wasm
+  Content-Type: application/wasm
