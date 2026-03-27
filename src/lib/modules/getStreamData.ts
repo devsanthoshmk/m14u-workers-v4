@@ -33,14 +33,23 @@ export default async function getStreamData(
   }
 
   if (isNative()) {
-    try {
-      const nativeData = await StreamExtractor.getStreamData({ videoId: id });
-      const result = nativeData as unknown as Invidious;
-      streamCache.set(id, { data: result, timestamp: Date.now() });
-      return result;
-    } catch (e) {
-      console.warn('Native extraction failed, falling back to Invidious:', e);
+    // Try native extraction with retry (handles "page needs to be reloaded" errors)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const nativeData = await StreamExtractor.getStreamData({ videoId: id });
+        const result = nativeData as unknown as Invidious;
+        streamCache.set(id, { data: result, timestamp: Date.now() });
+        console.log(`Native extraction succeeded for ${id} (attempt ${attempt + 1})`);
+        return result;
+      } catch (e) {
+        console.warn(`Native extraction attempt ${attempt + 1} failed:`, e);
+        if (attempt === 0) {
+          // Wait briefly before retry — NewPipeExtractor may need to re-fetch player
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
     }
+    console.warn('Native extraction failed after retries, falling back to Invidious');
   }
 
   const fetchData = async (proxy: string): Promise<Invidious> => {

@@ -9,7 +9,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Share2 } from 'lucide-react';
+import { ChevronDown, Share2, ListMusic } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
 import { getThumbnail, formatDuration } from '@/utils/format';
 import { ProgressBar } from '@/components/player/ProgressBar';
@@ -52,7 +52,7 @@ export function NowPlayingPage() {
     const albumArt = songImg || (songThumbnails ? getThumbnail(songThumbnails, 544) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
 
     return (
-        <div className="relative h-full flex flex-col overflow-hidden">
+        <div className="relative h-full flex flex-col overflow-hidden pt-[env(safe-area-inset-top)]">
             {/* Background — blurred album art */}
             <div className="absolute inset-0 z-0">
                 <img
@@ -76,6 +76,13 @@ export function NowPlayingPage() {
 
                     <div className="flex items-center gap-1">
                         <SleepTimerButton />
+                        <button
+                            onClick={() => navigate('/queue')}
+                            className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-all"
+                            title="Queue"
+                        >
+                            <ListMusic className="h-5 w-5" />
+                        </button>
                         <button
                             onClick={() => {
                                 const state = usePlayerStore.getState().exportState();
@@ -162,7 +169,7 @@ export function NowPlayingPage() {
                 </div>
 
                 {/* Bottom controls */}
-                <div className="px-6 pb-6 md:pb-8 space-y-4">
+                <div className="px-6 pb-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-8 space-y-4">
                     {/* Progress */}
                     <div>
                         <ProgressBar />
@@ -178,7 +185,7 @@ export function NowPlayingPage() {
                             onClick={() => toggleFavorite(currentSong as any)}
                             className="p-2 rounded-full transition-all"
                         >
-                            <Heart className={cn('h-6 w-6', isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground')} />
+                            <Heart className={cn('h-6 w-6', isFavorite ? 'fill-primary text-primary' : 'text-foreground/70')} />
                         </button>
 
                         <PlayerControls />

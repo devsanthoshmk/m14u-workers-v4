@@ -146,7 +146,7 @@ function QueueItemRow({ item, isCurrent = false }: { item: QueueItem; isCurrent?
                 </p>
                 <p className="text-[11px] text-muted-foreground line-clamp-1">{s.artist?.name || s.author}</p>
             </div>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 {!isCurrent && (
                     <button
                         onClick={() => playFromQueue(index)}
@@ -182,7 +182,7 @@ function SortableQueueItem({ item }: { item: QueueItem }) {
             <button
                 {...attributes}
                 {...listeners}
-                className="p-1 rounded text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
+                className="p-1 rounded text-muted-foreground/60 md:text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
             >
                 <GripVertical className="h-4 w-4" />
             </button>

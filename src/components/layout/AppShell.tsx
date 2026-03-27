@@ -68,7 +68,7 @@ export function AppShell() {
         <>
             {!onboardingDone && <OnboardingModal />}
 
-            <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
+            <div className="flex h-dvh w-full flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
                 <div className="flex flex-1 overflow-hidden">
                     {/* Desktop sidebar */}
                     <div className="hidden md:block flex-shrink-0">

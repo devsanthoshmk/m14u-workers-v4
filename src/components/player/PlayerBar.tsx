@@ -144,7 +144,7 @@ export function PlayerBar() {
                         onClick={(e) => { e.stopPropagation(); toggleFavorite(currentSong as TrackItem); }}
                         className="p-2 rounded-full"
                     >
-                        <Heart className={cn('h-5 w-5', isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground')} />
+                        <Heart className={cn('h-5 w-5', isFavorite ? 'fill-primary text-primary' : 'text-foreground/70')} />
                     </button>
                     <button
                         onClick={(e) => { e.stopPropagation(); togglePlay(); }}
