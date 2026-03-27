@@ -1,51 +1,67 @@
 package dev.m14u.app
 
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.schabi.newpipe.extractor.downloader.Downloader
-import org.schabi.newpipe.extractor.downloader.Request
+import org.schabi.newpipe.extractor.downloader.Request as NPRequest
 import org.schabi.newpipe.extractor.downloader.Response
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
 
-class DownloaderImpl private constructor() : Downloader() {
+class OkHttpDownloader : Downloader() {
 
-    companion object {
-        private val instance = DownloaderImpl()
-        fun getInstance(): DownloaderImpl = instance
-    }
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
 
-    override fun execute(request: Request): Response {
-        val url = URL(request.url())
-        val connection = url.openConnection() as HttpURLConnection
+    override fun execute(request: NPRequest): Response {
+        val url = request.url()
+        val headers = request.headers()
+        val dataToSend = request.dataToSend()
 
-        connection.requestMethod = request.httpMethod()
-        connection.connectTimeout = 30000
-        connection.readTimeout = 30000
+        val requestBuilder = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0")
 
-        for ((key, values) in request.headers()) {
+        // Add headers
+        for ((key, values) in headers) {
             for (value in values) {
-                connection.addRequestProperty(key, value)
+                requestBuilder.addHeader(key, value)
             }
         }
 
-        val dataToSend = request.dataToSend()
-        if (dataToSend != null) {
-            connection.doOutput = true
-            connection.outputStream.use { it.write(dataToSend) }
+        // Set method
+        val httpMethod = request.httpMethod()
+        when {
+            httpMethod == "POST" || httpMethod == "PUT" -> {
+                val body = dataToSend?.toRequestBody("application/json".toMediaType())
+                    ?: "".toRequestBody()
+                if (httpMethod == "POST") requestBuilder.post(body)
+                else requestBuilder.put(body)
+            }
+            httpMethod == "GET" -> requestBuilder.get()
+            httpMethod == "HEAD" -> requestBuilder.head()
+            httpMethod == "DELETE" -> requestBuilder.delete()
         }
 
-        val responseCode = connection.responseCode
-        val responseMessage = connection.responseMessage
-        val responseHeaders = connection.headerFields
-            .filterKeys { it != null }
-            .mapValues { it.value }
+        val response = client.newCall(requestBuilder.build()).execute()
 
-        val responseBody = try {
-            connection.inputStream.bufferedReader().readText()
-        } catch (e: IOException) {
-            connection.errorStream?.bufferedReader()?.readText() ?: ""
+        val responseBody = response.body?.string()
+        val responseHeaders = mutableMapOf<String, List<String>>()
+        for (name in response.headers.names()) {
+            responseHeaders[name] = response.headers.values(name)
         }
 
-        return Response(responseCode, responseMessage, responseHeaders, responseBody, request.url())
+        return Response(
+            response.code,
+            response.message,
+            responseHeaders,
+            responseBody,
+            response.request.url.toString()
+        )
     }
 }
