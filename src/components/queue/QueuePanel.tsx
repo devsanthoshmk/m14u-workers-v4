@@ -1,19 +1,22 @@
 /**
  * QueuePanel — Right-side panel showing the current queue.
  *
- * Features: Now playing item, upcoming items, drag-to-reorder, clear queue.
+ * Features: Now playing item, upcoming items, played history, drag-to-reorder, clear queue.
  * Rendered inside AppShell's right panel — not an overlay.
  */
 
+import { useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { getThumbnail } from '@/utils/format';
-import { X, Trash2, GripVertical, Play } from 'lucide-react';
+import { X, Trash2, GripVertical, Play, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     DndContext,
     closestCenter,
     PointerSensor,
+    TouchSensor,
     useSensor,
     useSensors,
 } from '@dnd-kit/core';
@@ -27,6 +30,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import type { QueueItem } from '@/types/player';
 
 export function QueuePanel() {
+    const navigate = useNavigate();
     const queue = usePlayerStore(s => s.queue);
     const queueIndex = usePlayerStore(s => s.queueIndex);
     const reorderQueue = usePlayerStore(s => s.reorderQueue);
@@ -34,10 +38,19 @@ export function QueuePanel() {
     const setQueueOpen = useUIStore(s => s.setQueueOpen);
 
     const currentItem = queue[queueIndex];
+    const playedItems = queue.slice(0, queueIndex);
     const upcomingItems = queue.slice(queueIndex + 1);
 
+    const nowPlayingRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll to "Now Playing" when it changes
+    useEffect(() => {
+        nowPlayingRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, [queueIndex]);
+
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
     );
 
     const handleDragEnd = (event: DragEndEvent) => {
@@ -51,11 +64,27 @@ export function QueuePanel() {
         }
     };
 
+    const handleClose = () => {
+        setQueueOpen(false);
+        // On mobile (full-page /queue route), navigate back
+        if (window.location.pathname === '/queue') {
+            navigate(-1);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full w-full">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-4 flex-shrink-0 border-b border-white/[0.06]">
-                <h2 className="text-base font-bold font-heading">Queue</h2>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleClose}
+                        className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all md:hidden"
+                    >
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <h2 className="text-base font-bold font-heading">Queue</h2>
+                </div>
                 <div className="flex items-center gap-1">
                     {queue.length > 0 && (
                         <button
@@ -67,8 +96,8 @@ export function QueuePanel() {
                         </button>
                     )}
                     <button
-                        onClick={() => setQueueOpen(false)}
-                        className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all"
+                        onClick={handleClose}
+                        className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all hidden md:block"
                     >
                         <X className="h-4 w-4" />
                     </button>
@@ -84,9 +113,21 @@ export function QueuePanel() {
                     </div>
                 ) : (
                     <>
+                        {/* Previously Played */}
+                        {playedItems.length > 0 && (
+                            <div className="pt-3 pb-2">
+                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">
+                                    Played · {playedItems.length}
+                                </p>
+                                {playedItems.map((item) => (
+                                    <QueueItemRow key={item.queueId} item={item} isPlayed />
+                                ))}
+                            </div>
+                        )}
+
                         {/* Now Playing */}
                         {currentItem && (
-                            <div className="pt-3 pb-2">
+                            <div className="pt-3 pb-2" ref={nowPlayingRef}>
                                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">Now Playing</p>
                                 <QueueItemRow item={currentItem} isCurrent />
                             </div>
@@ -121,7 +162,7 @@ export function QueuePanel() {
     );
 }
 
-function QueueItemRow({ item, isCurrent = false }: { item: QueueItem; isCurrent?: boolean }) {
+function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: QueueItem; isCurrent?: boolean; isPlayed?: boolean }) {
     const playFromQueue = usePlayerStore(s => s.playFromQueue);
     const removeFromQueue = usePlayerStore(s => s.removeFromQueue);
     const queue = usePlayerStore(s => s.queue);
@@ -134,7 +175,8 @@ function QueueItemRow({ item, isCurrent = false }: { item: QueueItem; isCurrent?
         <div
             className={cn(
                 'flex items-center gap-3 px-2 py-2 rounded-lg group transition-colors',
-                isCurrent ? 'bg-primary/[0.08]' : 'hover:bg-white/[0.04]'
+                isCurrent ? 'bg-primary/[0.08]' : 'hover:bg-white/[0.04]',
+                isPlayed && 'opacity-50'
             )}
         >
             <div className="relative h-10 w-10 rounded-md overflow-hidden flex-shrink-0 ring-1 ring-white/10">
@@ -149,17 +191,17 @@ function QueueItemRow({ item, isCurrent = false }: { item: QueueItem; isCurrent?
             <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                 {!isCurrent && (
                     <button
-                        onClick={() => playFromQueue(index)}
-                        className="p-1.5 rounded-full hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => { e.stopPropagation(); playFromQueue(index); }}
+                        className="p-2 rounded-full hover:bg-white/10 text-muted-foreground hover:text-foreground"
                     >
-                        <Play className="h-3.5 w-3.5" fill="currentColor" />
+                        <Play className="h-4 w-4" fill="currentColor" />
                     </button>
                 )}
                 <button
-                    onClick={() => removeFromQueue(item.queueId)}
-                    className="p-1.5 rounded-full hover:bg-white/10 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => { e.stopPropagation(); removeFromQueue(item.queueId); }}
+                    className="p-2 rounded-full hover:bg-white/10 text-muted-foreground hover:text-destructive"
                 >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                 </button>
             </div>
         </div>

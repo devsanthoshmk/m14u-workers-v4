@@ -47,6 +47,9 @@ importers:
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
+      cloudflaredjs:
+        specifier: github:devsanthoshmk/cloudflaredjs
+        version: https://codeload.github.com/devsanthoshmk/cloudflaredjs/tar.gz/521dbff57c313ae1d838d182db5c8f656a332a1f
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1289,6 +1292,10 @@ packages:
 
   class-variance-authority@0.7.1:
     resolution: {integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==}
+
+  cloudflaredjs@https://codeload.github.com/devsanthoshmk/cloudflaredjs/tar.gz/521dbff57c313ae1d838d182db5c8f656a332a1f:
+    resolution: {tarball: https://codeload.github.com/devsanthoshmk/cloudflaredjs/tar.gz/521dbff57c313ae1d838d182db5c8f656a332a1f}
+    version: 0.0.0
 
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
@@ -3317,6 +3324,8 @@ snapshots:
   class-variance-authority@0.7.1:
     dependencies:
       clsx: 2.1.1
+
+  cloudflaredjs@https://codeload.github.com/devsanthoshmk/cloudflaredjs/tar.gz/521dbff57c313ae1d838d182db5c8f656a332a1f: {}
 
   clsx@2.1.1: {}
 
