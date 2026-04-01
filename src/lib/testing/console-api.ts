@@ -7,11 +7,14 @@ import { logEntry, logger, onErrorEntry, type LogEntry } from './logger';
 import { wait } from './wait';
 import { assert } from './assert';
 import { highlight, highlightButton, clearHighlights } from './highlight';
+import DevTunnel from '@/plugins/DevTunnel';
+import { useListenAlongStore } from '@/stores/listenAlongStore';
 
 const player = () => usePlayerStore.getState();
 const ui = () => useUIStore.getState();
 const search = () => useSearchStore.getState();
 const list = () => useListStore.getState();
+const listenAlong = () => useListenAlongStore.getState();
 
 let _lastError: LogEntry | null = null;
 const _errorCallbacks: Array<(e: LogEntry) => void> = [];
@@ -274,6 +277,96 @@ const api = {
     async channel(id: string) { return actAsync('load.channel', () => list().loadChannel(id), id); },
   },
 
+  // --- Dev Tunnel ---
+  async socketit(username: string, port?: number) {
+    return actAsync('socketit', async () => {
+      if (!username) throw new Error('socketit: username is required');
+
+      // Auto-attach structured log listener for cloudflared output
+      DevTunnel.addListener('tunnelLog', (e) => {
+        const levelColors: Record<string, string> = {
+          info: 'color:#00ff88', warn: 'color:#ffaa00;font-weight:bold',
+          error: 'color:#ff3b3b;font-weight:bold', debug: 'color:#888',
+          fatal: 'color:#ff0000;font-weight:bold;text-decoration:underline',
+        };
+        const style = levelColors[e.level] || 'color:#ccc';
+        const fields = e.fields ? ` ${JSON.stringify(e.fields)}` : '';
+        const ts = e.timestamp ? `[${e.timestamp}] ` : '';
+        const logFn = e.level === 'error' || e.level === 'fatal' ? console.error
+          : e.level === 'warn' ? console.warn : console.log;
+        logFn(`%c[cf:${e.level}] ${ts}${e.message}${fields}`, style);
+      });
+
+      // Listen for panic (auto-restart) events
+      DevTunnel.addListener('tunnelPanic', (e) => {
+        if (e.type === 'restarting') console.warn(`%c⚠️ PANIC: Tunnel died (${e.reason}), restarting (attempt ${e.attempt})...`, 'color:#ffaa00;font-weight:bold');
+        if (e.type === 'restarted') console.log(`%c✅ Tunnel restarted: ${e.newUrl}`, 'color:#00ff88;font-weight:bold');
+        if (e.type === 'failed') console.error(`%c❌ Tunnel permanently failed after ${e.attempt} attempts`, 'color:#ff0000;font-weight:bold');
+      });
+
+      const { url } = await DevTunnel.startTunnel({ username, port: port ?? 8080 });
+      console.log(`%c⚡ Tunnel live: ${url}`, 'color:#00ff88;font-weight:bold');
+      console.log(`%c📡 Published to: m14u.sanpro.workers.dev/?key=${username}`, 'color:#ff3b6b');
+      return url;
+    }, { username, port });
+  },
+  async sockmsg(message: string) {
+    return actAsync('sockmsg', async () => {
+      if (!message) throw new Error('sockmsg: message is required');
+      const { sent, clients } = await DevTunnel.sendMessage({ message });
+      console.log(`%c📤 Sent to ${clients} client(s): ${sent}`, 'color:#00ff88');
+      return { sent, clients };
+    }, message);
+  },
+  async sockstop() {
+    return actAsync('sockstop', async () => {
+      await DevTunnel.stopTunnel();
+      console.log('%c🔌 Tunnel stopped', 'color:#ff3b6b;font-weight:bold');
+    });
+  },
+  async sockurl() {
+    const { url } = await DevTunnel.getTunnelUrl();
+    return url || null;
+  },
+
+  // --- Listen Along / Room ---
+  room: {
+    async create(name: string) {
+      return actAsync('room.create', async () => {
+        if (!name) throw new Error('room.create: room name is required');
+        const url = await listenAlong().createRoom(name);
+        console.log(`%c📡 Room "${name}" created: ${url}`, 'color:#00ff88;font-weight:bold');
+        console.log(`%c🔗 Share: https://m14u.pages.dev/room/${name}`, 'color:#ff3b6b');
+        return url;
+      }, name);
+    },
+    async join(name: string) {
+      return actAsync('room.join', async () => {
+        if (!name) throw new Error('room.join: room name is required');
+        await listenAlong().joinRoom(name);
+        console.log(`%c🎧 Joined room "${name}"`, 'color:#00ff88;font-weight:bold');
+      }, name);
+    },
+    leave() {
+      return act('room.leave', () => {
+        listenAlong().leaveRoom();
+        console.log('%c👋 Left room', 'color:#ff3b6b;font-weight:bold');
+      });
+    },
+    state() {
+      const s = listenAlong();
+      return {
+        isInRoom: s.isInRoom,
+        isHost: s.isHost,
+        roomName: s.roomName,
+        tunnelUrl: s.tunnelUrl,
+        connectionStatus: s.connectionStatus,
+        roomState: s.roomState,
+        error: s.error,
+      };
+    },
+  },
+
   // --- Meta ---
   help() {
     const cmds = [
@@ -298,6 +391,8 @@ const api = {
       'highlight(sel, label?)', 'highlightButton(text)', 'clearHighlights()',
       'state.player()', 'state.ui()', 'state.search()', 'state.list()',
       'load.album(id)', 'load.artist(id)', 'load.playlist(id, all?)', 'load.channel(id)',
+      'socketit(username, port?)', 'sockmsg(message)', 'sockstop()', 'sockurl()',
+      'room.create(name)', 'room.join(name)', 'room.leave()', 'room.state()',
       'help()', 'version()',
     ];
     console.log('%cm14u Console API', 'font-size:16px;font-weight:bold;color:#ff3b6b');

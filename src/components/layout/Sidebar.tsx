@@ -4,10 +4,13 @@
  * Width: 220px fixed. Navigation items follow F-pattern reading.
  */
 
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Search, Heart, ListMusic, Music2, Radio } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
+import { useListenAlongStore } from '@/stores/listenAlongStore';
+import { ListenAlongModal } from '@/components/listenAlong/ListenAlongModal';
 
 const NAV_ITEMS = [
     { to: '/', icon: Home, label: 'Home' },
@@ -17,6 +20,20 @@ const NAV_ITEMS = [
 ] as const;
 
 export function Sidebar() {
+    const [modalOpen, setModalOpen] = useState(false);
+    const isInRoom = useListenAlongStore(s => s.isInRoom);
+    const isHost = useListenAlongStore(s => s.isHost);
+    const connectionStatus = useListenAlongStore(s => s.connectionStatus);
+    const isRoomPanelOpen = useUIStore(s => s.isRoomPanelOpen);
+
+    const handleListenAlongClick = () => {
+        if (isInRoom) {
+            useUIStore.getState().toggleRoomPanel();
+        } else {
+            setModalOpen(true);
+        }
+    };
+
     return (
         <>
             <aside className="flex flex-col h-full w-[220px] bg-[hsl(240_6%_6%)] border-r border-white/[0.06]">
@@ -52,20 +69,31 @@ export function Sidebar() {
                     ))}
                 </nav>
 
-                {/* ─── Listen Along (Coming Soon) ─── */}
+                {/* ─── Listen Along ─── */}
                 <div className="px-3 mt-4">
                     <button
-                        onClick={() => useUIStore.getState().setSnackbar('Listen Along is coming soon!')}
-                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[14px] font-medium text-muted-foreground/50 cursor-not-allowed"
-                        title="Coming Soon"
+                        onClick={handleListenAlongClick}
+                        className={cn(
+                            'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[14px] font-medium transition-all duration-150',
+                            isInRoom
+                                ? isRoomPanelOpen
+                                    ? 'bg-[#ff3b6b]/15 text-[#ff3b6b]'
+                                    : 'text-[#ff3b6b] hover:bg-[#ff3b6b]/10'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.04]'
+                        )}
                     >
                         <div className="relative">
                             <Radio className="h-[18px] w-[18px] flex-shrink-0" />
-                            <span className="absolute -top-1 -right-1 text-[8px] bg-amber-500 text-black px-1 rounded-full font-bold">
-                                SOON
-                            </span>
+                            {isInRoom && connectionStatus === 'connected' && (
+                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+                            )}
                         </div>
                         Listen Along
+                        {isInRoom && (
+                            <span className="ml-auto text-[10px] opacity-60">
+                                {isHost ? 'Host' : 'Joined'}
+                            </span>
+                        )}
                     </button>
                 </div>
 
@@ -75,6 +103,8 @@ export function Sidebar() {
                     M14U · {new Date().getFullYear()}
                 </div>
             </aside>
+
+            <ListenAlongModal open={modalOpen} onOpenChange={setModalOpen} />
         </>
     );
 }

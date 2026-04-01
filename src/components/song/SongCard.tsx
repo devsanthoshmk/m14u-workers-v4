@@ -9,7 +9,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { getThumbnail, formatDuration } from '@/utils/format';
 import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Song, TrackItem } from '@/types/music';
 
 interface SongCardProps {
@@ -38,19 +38,54 @@ export function SongCard({ song }: SongCardProps) {
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const didLongPress = useRef(false);
+
+    const handleTouchStart = useCallback(() => {
+        didLongPress.current = false;
+        longPressTimer.current = setTimeout(() => {
+            didLongPress.current = true;
+            setShowMenu(true);
+            window.getSelection()?.removeAllRanges();
+        }, 500);
+    }, []);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+        if (didLongPress.current) {
+            e.preventDefault();
+            didLongPress.current = false;
+        }
+    }, []);
+
+    const handleTouchMove = useCallback(() => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
 
     const currentSongId = (currentSong as any)?.videoId || currentSong?.id;
     const isCurrentSong = currentSongId === songId;
     const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 300) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
 
     useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setShowMenu(false);
             }
         };
-        if (showMenu) document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        if (showMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
     }, [showMenu]);
 
     const handlePlay = () => {
@@ -62,7 +97,13 @@ export function SongCard({ song }: SongCardProps) {
     };
 
     return (
-        <div className="group relative flex flex-col p-2 rounded-xl transition-colors hover:bg-white/[0.04]">
+        <div
+            className="group relative flex flex-col p-2 rounded-xl transition-colors hover:bg-white/[0.04]"
+            onContextMenu={(e) => { e.preventDefault(); setShowMenu(true); }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
+        >
             {/* Album art container */}
             <div className="relative aspect-square rounded-lg overflow-hidden mb-2.5 bg-surface">
                 {thumbnail ? (
@@ -93,7 +134,7 @@ export function SongCard({ song }: SongCardProps) {
                 {/* Hover overlay with centered play button */}
                 <div className={cn(
                     'absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity duration-200',
-                    isCurrentSong && isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    'opacity-0 group-hover:opacity-100'
                 )}>
                     <button
                         onClick={handlePlay}
@@ -110,7 +151,7 @@ export function SongCard({ song }: SongCardProps) {
                 {/* Context menu button */}
                 <button
                     onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                    className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                    className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-black/80"
                 >
                     <MoreHorizontal className="h-4 w-4" />
                 </button>

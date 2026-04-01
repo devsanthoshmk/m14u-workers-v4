@@ -8,7 +8,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { getThumbnail, formatDuration } from '@/utils/format';
 import { cn } from '@/lib/utils';
 import type { Song, TrackItem } from '@/types/music';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface SongRowProps {
     song: TrackItem | Song;
@@ -40,16 +40,52 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const didLongPress = useRef(false);
     const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 60) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
 
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        didLongPress.current = false;
+        longPressTimer.current = setTimeout(() => {
+            didLongPress.current = true;
+            setShowMenu(true);
+            // Prevent text selection
+            window.getSelection()?.removeAllRanges();
+        }, 500);
+    }, []);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+        if (didLongPress.current) {
+            e.preventDefault();
+            didLongPress.current = false;
+        }
+    }, []);
+
+    const handleTouchMove = useCallback(() => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
+
     useEffect(() => {
-        const handleClick = (e: MouseEvent) => {
+        const handleClick = (e: MouseEvent | TouchEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setShowMenu(false);
             }
         };
-        if (showMenu) document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
+        if (showMenu) {
+            document.addEventListener('mousedown', handleClick);
+            document.addEventListener('touchstart', handleClick);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('touchstart', handleClick);
+        };
     }, [showMenu]);
 
     const handlePlay = () => {
@@ -67,6 +103,10 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                 isCurrentSong && 'bg-primary/5'
             )}
             onClick={handlePlay}
+            onContextMenu={(e) => { e.preventDefault(); setShowMenu(true); }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
         >
             {/* Index / play icon */}
             {showIndex && (
@@ -113,8 +153,8 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                     toggleFavorite(song as TrackItem);
                 }}
                 className={cn(
-                    'p-1.5 rounded-full transition-all opacity-0 group-hover:opacity-100',
-                    isFavorite && 'opacity-100 text-primary'
+                    'p-1.5 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100',
+                    isFavorite && '!opacity-100 text-primary'
                 )}
             >
                 <Heart className={cn('h-4 w-4', isFavorite && 'fill-primary')} />
@@ -132,7 +172,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                         e.stopPropagation();
                         setShowMenu(!showMenu);
                     }}
-                    className="p-1.5 rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                    className="p-1.5 rounded-full text-muted-foreground md:opacity-0 md:group-hover:opacity-100 hover:text-foreground transition-all"
                 >
                     <MoreHorizontal className="h-4 w-4" />
                 </button>

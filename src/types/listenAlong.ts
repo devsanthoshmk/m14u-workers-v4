@@ -1,22 +1,16 @@
-/**
- * Listen Along types — room management and connection state (V1 Architecture).
- */
+import type { TrackItem } from './music';
+import type { QueueItem } from './player';
 
-export interface RoomInfo {
-    roomCode: string;
-    peerId: string;
-    hostPeerId: string;
-    expiresAt: number;
-    peers: PeerInfo[];
+export interface RoomState {
+    roomName: string;
+    currentSong: TrackItem | null;
+    queue: QueueItem[];
+    queueIndex: number;
+    isPlaying: boolean;
+    /** Microseconds — when current song playback started (Date.now()*1000 - currentTime*1_000_000) */
+    playbackStartedAt: number;
+    /** Milliseconds — when this state snapshot was generated */
+    timestamp: number;
 }
 
-export interface PeerInfo {
-    peerId: string;
-    displayName: string;
-    isHost: boolean;
-    lastSeen?: number;
-    lastAckAt?: number;
-    isOnline?: boolean;
-}
-
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';

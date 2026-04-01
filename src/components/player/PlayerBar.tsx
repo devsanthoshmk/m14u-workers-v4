@@ -73,7 +73,7 @@ export function PlayerBar() {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="flex-shrink-0 bg-[hsl(240_6%_7%)] border-t border-white/[0.06]"
+            className="flex-shrink-0 w-full max-w-full overflow-hidden bg-[hsl(240_6%_7%)] border-t border-white/[0.06]"
         >
             {/* Full-width progress bar ABOVE the controls */}
             <div className="px-0 relative">
@@ -98,7 +98,7 @@ export function PlayerBar() {
                 {/* Left: Album art + song info */}
                 <button
                     onClick={() => navigate('/now-playing')}
-                    className="flex items-center gap-3 min-w-0 md:w-[260px] flex-shrink-0 text-left group/info"
+                    className="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-[260px] flex-shrink md:flex-shrink-0 text-left group/info overflow-hidden"
                 >
                     <div className="relative h-12 w-12 md:h-[52px] md:w-[52px] flex-shrink-0 rounded-md overflow-hidden ring-1 ring-white/10">
                         {thumbnail ? (

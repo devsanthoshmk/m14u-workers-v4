@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tunnel": "node scripts/dev-tunnel.mjs",
+    "dev:android": "vite build && npx cap sync android && npx cap run android",
     "build": "vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",
@@ -29,6 +31,7 @@
     "framer-motion": "^12.35.0",
     "lucide-react": "^0.577.0",
     "postcss": "^8.5.8",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",

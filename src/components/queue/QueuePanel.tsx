@@ -224,7 +224,7 @@ function SortableQueueItem({ item }: { item: QueueItem }) {
             <button
                 {...attributes}
                 {...listeners}
-                className="p-1 rounded text-muted-foreground/60 md:text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
+                className="p-2 rounded text-muted-foreground/60 md:text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
             >
                 <GripVertical className="h-4 w-4" />
             </button>

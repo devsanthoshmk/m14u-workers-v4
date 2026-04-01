@@ -135,7 +135,7 @@ export function SearchPage() {
                                                     e.stopPropagation();
                                                     removeRecentSearch(search);
                                                 }}
-                                                className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="ml-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                                             </button>

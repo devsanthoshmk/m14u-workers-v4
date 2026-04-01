@@ -20,6 +20,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { routerRef } from '@/lib/testing/router-ref';
 import { AnimatePresence, motion } from 'framer-motion';
+import { RoomPanel } from '@/components/listenAlong/RoomPanel';
 
 import { HomePage } from '@/pages/HomePage';
 import { SearchPage } from '@/pages/SearchPage';
@@ -56,13 +57,14 @@ export function AppShell() {
     }, [navigate, location]);
     const isQueueOpen = useUIStore(s => s.isQueueOpen);
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
+    const isRoomPanelOpen = useUIStore(s => s.isRoomPanelOpen);
     const onboardingDone = useUIStore(s => s.onboardingDone);
     const currentSong = usePlayerStore(s => s.currentSong);
 
-    const showRightPanel = (isQueueOpen || isLyricsOpen) && !!currentSong;
+    const showRightPanel = isRoomPanelOpen || ((isQueueOpen || isLyricsOpen) && !!currentSong);
     const isKeepAliveRoute = ['/', '/search', '/favorites'].includes(location.pathname);
 
-    const rightPanelKey = isQueueOpen ? 'queue' : 'lyrics';
+    const rightPanelKey = isRoomPanelOpen ? 'room' : isQueueOpen ? 'queue' : 'lyrics';
 
     return (
         <>
@@ -106,7 +108,7 @@ export function AppShell() {
                                 transition={{ duration: 0.25, ease: 'easeInOut' }}
                                 className="hidden md:flex flex-col flex-shrink-0 border-l border-white/[0.06] bg-[hsl(240_6%_7%)] overflow-hidden"
                             >
-                                {isQueueOpen ? <QueuePanel /> : <LyricsPanel />}
+                                {isRoomPanelOpen ? <RoomPanel /> : isQueueOpen ? <QueuePanel /> : <LyricsPanel />}
                             </motion.aside>
                         )}
                     </AnimatePresence>
