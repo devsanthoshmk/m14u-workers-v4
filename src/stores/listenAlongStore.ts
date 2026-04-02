@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Capacitor } from '@capacitor/core';
 import DevTunnel from '@/plugins/DevTunnel';
 import { usePlayerStore } from '@/stores/playerStore';
+import * as audioEngine from '@/lib/audioEngine';
 import type { RoomState, ConnectionStatus } from '@/types/listenAlong';
 
 const KV_BASE = 'https://m14u.sanpro.workers.dev/';
@@ -118,34 +119,97 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
                     useListenAlongStore.setState({ roomState: msg });
                     
                     const player = usePlayerStore.getState();
-                    const newTime = msg.playbackStartedAt 
-                        ? Math.max(0, (Date.now() * 1000 - msg.playbackStartedAt) / 1_000_000) 
-                        : 0;
+                    const hostOriginMicros: number = msg.playbackStartedAt || 0;
                         
                     if (player.currentSong?.id !== msg.currentSong?.id) {
+                        // === NEW SONG: play and compensate for startup delay ===
                         usePlayerStore.setState({ 
                             queue: msg.queue,
                             queueIndex: msg.queueIndex
                         });
                         if (msg.currentSong) {
-                             player.playSong(msg.currentSong).then(() => {
-                                 const p2 = usePlayerStore.getState();
-                                 if (msg.isPlaying) p2.audio.play().catch(() => {});
-                                 else p2.audio.pause();
-                                 p2.seek(newTime);
-                             });
+                            if (!msg.isPlaying) {
+                                // Host is paused — just load the song at the right position
+                                const pausedAt = hostOriginMicros > 0
+                                    ? Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000)
+                                    : 0;
+                                player.playSong(msg.currentSong).then(() => {
+                                    const p2 = usePlayerStore.getState();
+                                    p2.pause();
+                                    p2.seek(pausedAt);
+                                });
+                            } else {
+                                // Host is playing — play, wait for actual start, then compensate
+                                player.playSong(msg.currentSong).then(async () => {
+                                    const p2 = usePlayerStore.getState();
+                                    try {
+                                        await p2.play();
+                                    } catch { /* autoplay may be blocked */ }
+
+                                    try {
+                                        // Wait for the multi-sample origin detection
+                                        const guestOriginMicros = await audioEngine.waitForPlaybackOrigin();
+                                        
+                                        // How far behind is the guest vs the host?
+                                        // hostOriginMicros = wall-clock μs when host's 0:00 was at speakers
+                                        // guestOriginMicros = wall-clock μs when guest's 0:00 was at speakers
+                                        // drift = guest started later → guest is behind by (guestOrigin - hostOrigin) μs
+                                        const driftMicros = guestOriginMicros - hostOriginMicros;
+                                        const driftSec = driftMicros / 1_000_000;
+
+                                        if (driftSec > 0.1) {
+                                            // Seek forward by the drift amount to catch up with host
+                                            const targetPosition = p2.currentTime + driftSec;
+                                            console.log(
+                                                `[ListenAlong] Guest sync: drift=${driftSec.toFixed(3)}s, ` +
+                                                `seeking to ${targetPosition.toFixed(3)}s`
+                                            );
+                                            p2.seek(targetPosition);
+                                        } else {
+                                            console.log(`[ListenAlong] Guest sync: drift=${driftSec.toFixed(3)}s (within tolerance)`);
+                                        }
+                                    } catch (err) {
+                                        // Fallback: use old estimation method
+                                        console.warn('[ListenAlong] Origin detection failed, using fallback sync:', err);
+                                        const fallbackTime = hostOriginMicros > 0
+                                            ? Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000)
+                                            : 0;
+                                        p2.seek(fallbackTime);
+                                    }
+                                });
+                            }
                         } else {
                             player.clearQueue();
                         }
                     } else {
+                        // === SAME SONG: sync play state and correct drift ===
                         if (player.isPlaying !== msg.isPlaying) {
-                            if (msg.isPlaying) player.audio.play().catch(() => {});
-                            else player.audio.pause();
+                            if (msg.isPlaying) player.play().catch(() => {});
+                            else player.pause();
                         }
                         
-                        const timeDiff = Math.abs(player.currentTime - newTime);
-                        if (msg.isPlaying && timeDiff > 2) {
-                            player.seek(newTime);
+                        // Check position drift using precise origins
+                        if (msg.isPlaying && hostOriginMicros > 0) {
+                            const guestOriginMicros = audioEngine.getPlaybackOriginMicros();
+                            if (guestOriginMicros > 0) {
+                                const driftSec = (guestOriginMicros - hostOriginMicros) / 1_000_000;
+                                // If guest is more than 1 second behind/ahead, correct
+                                if (Math.abs(driftSec) > 1) {
+                                    const targetPosition = player.currentTime + driftSec;
+                                    console.log(
+                                        `[ListenAlong] Drift correction: ${driftSec.toFixed(3)}s, ` +
+                                        `seeking to ${targetPosition.toFixed(3)}s`
+                                    );
+                                    player.seek(Math.max(0, targetPosition));
+                                }
+                            } else {
+                                // Fallback: use estimated time comparison
+                                const expectedTime = Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000);
+                                const timeDiff = Math.abs(player.currentTime - expectedTime);
+                                if (timeDiff > 2) {
+                                    player.seek(expectedTime);
+                                }
+                            }
                         }
                     }
                 }
@@ -198,7 +262,7 @@ function buildRoomState(roomName: string): RoomState {
         queue: p.queue,
         queueIndex: p.queueIndex,
         isPlaying: p.isPlaying,
-        playbackStartedAt: Date.now() * 1000 - (p.currentTime || 0) * 1_000_000,
+        playbackStartedAt: p.playbackOriginMicros || (Date.now() * 1000 - (p.currentTime || 0) * 1_000_000),
         timestamp: Date.now(),
         listeners: [],
     };

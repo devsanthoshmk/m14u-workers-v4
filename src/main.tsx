@@ -6,8 +6,8 @@ import App from './App';
 import { initializePlayerStore } from '@/stores/playerStore';
 import { registerConsoleAPI } from '@/lib/testing';
 
-// Initialize player store before React renders
-initializePlayerStore();
+// Initialize player store and Web Audio engine before React renders
+initializePlayerStore().catch(err => console.error('[Init] Player store initialization failed:', err));
 registerConsoleAPI();
 
 createRoot(document.getElementById('root')!).render(

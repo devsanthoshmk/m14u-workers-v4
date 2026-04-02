@@ -3,7 +3,8 @@
  * 
  * Rewired to use ytify architecture:
  * - Uses Invidious proxies for stream fetching
- * - Direct HTMLAudioElement instead of AudioEngine singleton
+ * - Web Audio API via audioEngine for precise timing & GainNode volume
+ * - HTMLAudioElement as media source (routed through AudioContext)
  * - youtubei.js backend API for metadata
  */
 
@@ -15,6 +16,7 @@ import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
+import * as audioEngine from '@/lib/audioEngine';
 
 interface QueueItem {
     queueId: string;
@@ -33,6 +35,7 @@ interface ShareablePlayerState {
     repeatMode: RepeatMode;
     isShuffled: boolean;
     timestamp: number;
+    playbackOriginMicros: number;
 }
 
 interface FavoriteItem {
@@ -49,7 +52,6 @@ interface ListeningHistoryItem {
 interface PlayerStore {
     // Playback state
     currentSong: TrackItem | null;
-    audio: HTMLAudioElement;
     isPlaying: boolean;
     isBuffering: boolean;
     currentTime: number;
@@ -58,6 +60,7 @@ interface PlayerStore {
     isMuted: boolean;
     error: string | null;
     status: string;
+    playbackOriginMicros: number;
 
     // Stream data
     proxy: string;
@@ -76,6 +79,8 @@ interface PlayerStore {
 
     // Player actions
     playSong: (song: TrackItem) => Promise<void>;
+    play: () => Promise<void>;
+    pause: () => void;
     togglePlay: () => Promise<void>;
     next: () => Promise<void>;
     previous: () => Promise<void>;
@@ -174,9 +179,13 @@ export const usePlayerStore = create<PlayerStore>()(
                 set({ error, isBuffering: false, isPlaying: false });
             });
 
+            // Listen for precise playback origin from AudioEngine
+            audioEngine.onPlaybackOriginReady((originMicros) => {
+                set({ playbackOriginMicros: originMicros });
+            });
+
             return {
                 // Initial state
-                audio,
                 currentSong: null,
                 isPlaying: false,
                 isBuffering: false,
@@ -186,6 +195,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 isMuted: false,
                 error: null,
                 status: '',
+                playbackOriginMicros: 0,
                 proxy: '',
                 streamData: null,
                 queue: [],
@@ -212,6 +222,7 @@ export const usePlayerStore = create<PlayerStore>()(
                         isPlaying: false,
                         error: null,
                         currentTime: 0,
+                        playbackOriginMicros: 0,
                         status: 'Loading stream...'
                     });
 
@@ -251,10 +262,13 @@ export const usePlayerStore = create<PlayerStore>()(
       // Check if song changed while we were fetching
       if (get().currentSong?.id !== song.id) return;
 
+      // Reset the AudioWorklet silence detector before loading new source
+      audioEngine.resetStartDetection();
+
       audio.src = streamUrl;
-                        audio.volume = state.volume;
-                        audio.muted = state.isMuted;
                         
+                        // Resume AudioContext (Chrome autoplay policy)
+                        await audioEngine.resumeContext();
                         await audio.play();
                         
                         set({ 
@@ -274,11 +288,23 @@ export const usePlayerStore = create<PlayerStore>()(
                     }
                 },
 
+                play: async () => {
+                    const { currentSong } = get();
+                    if (!currentSong) return;
+                    await audioEngine.resumeContext();
+                    await audio.play();
+                },
+
+                pause: () => {
+                    audio.pause();
+                },
+
                 togglePlay: async () => {
-                    const { currentSong, audio } = get();
+                    const { currentSong } = get();
                     if (!currentSong) return;
                     
                     if (audio.paused) {
+                        await audioEngine.resumeContext();
                         await audio.play();
                     } else {
                         audio.pause();
@@ -286,7 +312,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 next: async () => {
-                    const { queue, queueIndex, repeatMode, audio } = get();
+                    const { queue, queueIndex, repeatMode } = get();
                     if (queue.length === 0) return;
 
                     let nextIndex = queueIndex + 1;
@@ -306,7 +332,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 previous: async () => {
-                    const { queue, queueIndex, currentTime, audio } = get();
+                    const { queue, queueIndex, currentTime } = get();
                     if (queue.length === 0) return;
 
                     if (currentTime > 3) {
@@ -325,20 +351,18 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 seek: (time: number) => {
-                    const { audio } = get();
                     audio.currentTime = time;
                     set({ currentTime: time });
                 },
 
                 setVolume: (volume: number) => {
                     const clamped = Math.min(Math.max(0, volume), 1);
-                    const { audio } = get();
                     audio.volume = clamped;
                     set({ volume: clamped, isMuted: clamped === 0 });
                 },
 
                 toggleMute: () => {
-                    const { isMuted, volume, audio } = get();
+                    const { isMuted, volume } = get();
                     const newMuted = !isMuted;
                     audio.muted = newMuted;
                     set({ isMuted: newMuted });
@@ -444,7 +468,6 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 clearQueue: () => {
-                    const { audio } = get();
                     audio.pause();
                     set({
                         queue: [],
@@ -454,6 +477,7 @@ export const usePlayerStore = create<PlayerStore>()(
                         isPlaying: false,
                         currentTime: 0,
                         duration: 0,
+                        playbackOriginMicros: 0,
                     });
                 },
 
@@ -522,8 +546,9 @@ export const usePlayerStore = create<PlayerStore>()(
                 _setError: (error: string | null) => set({ error }),
 
                 _onTrackEnded: () => {
-                    const { repeatMode, audio } = get();
+                    const { repeatMode } = get();
                     if (repeatMode === 'one' && get().currentSong) {
+                        audioEngine.resetStartDetection();
                         audio.currentTime = 0;
                         audio.play();
                     } else {
@@ -544,6 +569,7 @@ export const usePlayerStore = create<PlayerStore>()(
                         repeatMode: s.repeatMode,
                         isShuffled: s.isShuffled,
                         timestamp: Date.now(),
+                        playbackOriginMicros: s.playbackOriginMicros,
                     };
                 },
 
@@ -561,6 +587,11 @@ export const usePlayerStore = create<PlayerStore>()(
                             get().seek(imported.currentTime);
                         }, 500);
                     }
+                },
+
+                // Expose audio element for internal use only (e.g., MediaSession)
+                get _audio() {
+                    return audio;
                 },
             };
         },
@@ -585,13 +616,18 @@ export const usePlayerStore = create<PlayerStore>()(
 );
 
 /**
- * Initialize player store.
+ * Initialize player store and Web Audio engine.
  * Must be called once on app startup.
  */
-export function initializePlayerStore(): void {
+export async function initializePlayerStore(): Promise<void> {
     const store = usePlayerStore.getState();
-    const { audio, volume, isMuted } = store;
+    const { volume, isMuted } = store;
     
-    audio.volume = volume;
-    audio.muted = isMuted;
+    // Initialize the audio engine for precise timing
+    const audio = (store as any)._audio;
+    if (audio) {
+        audioEngine.initAudioEngine(audio);
+        audio.volume = volume;
+        audio.muted = isMuted;
+    }
 }

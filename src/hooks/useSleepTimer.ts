@@ -85,7 +85,7 @@ export function useSleepTimer(): SleepTimerActions {
 
                 if (remaining <= 0) {
                     // Time's up — pause
-                    usePlayerStore.getState().audio.pause();
+                    usePlayerStore.getState().pause();
                     usePlayerStore.getState()._setIsPlaying(false);
                     // Restore volume
                     usePlayerStore.getState().setVolume(originalVolumeRef.current);
@@ -98,7 +98,7 @@ export function useSleepTimer(): SleepTimerActions {
                 if (remaining <= 30) {
                     const fadeRatio = remaining / 30;
                     const fadedVolume = originalVolumeRef.current * fadeRatio;
-                    usePlayerStore.getState().audio.volume = fadedVolume;
+                    usePlayerStore.getState().setVolume(fadedVolume);
                 }
 
                 return { ...prev, remainingSeconds: remaining };
