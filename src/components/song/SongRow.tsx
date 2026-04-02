@@ -44,12 +44,11 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
     const didLongPress = useRef(false);
     const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 60) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
 
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const handleTouchStart = useCallback(() => {
         didLongPress.current = false;
         longPressTimer.current = setTimeout(() => {
             didLongPress.current = true;
             setShowMenu(true);
-            // Prevent text selection
             window.getSelection()?.removeAllRanges();
         }, 500);
     }, []);
@@ -73,15 +72,14 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
     }, []);
 
     useEffect(() => {
+        if (!showMenu) return;
         const handleClick = (e: MouseEvent | TouchEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setShowMenu(false);
             }
         };
-        if (showMenu) {
-            document.addEventListener('mousedown', handleClick);
-            document.addEventListener('touchstart', handleClick);
-        }
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('touchstart', handleClick);
         return () => {
             document.removeEventListener('mousedown', handleClick);
             document.removeEventListener('touchstart', handleClick);

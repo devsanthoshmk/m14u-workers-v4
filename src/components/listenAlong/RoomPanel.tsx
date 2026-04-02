@@ -1,12 +1,62 @@
-import { X, Radio, Wifi, WifiOff, Loader2, Copy, Check, LogOut } from 'lucide-react';
+import { X, Radio, Wifi, WifiOff, Loader2, Copy, Check, LogOut, Headphones } from 'lucide-react';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useUIStore } from '@/stores/uiStore';
 import { useListenAlongStore } from '@/stores/listenAlongStore';
 
+function ListenerAvatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 'lg' }) {
+    const sizeClasses = size === 'sm' ? 'w-6 h-6 text-[10px]' : size === 'lg' ? 'w-10 h-10 text-sm' : 'w-8 h-8 text-xs';
+    return (
+        <div className={`${sizeClasses} rounded-full bg-gradient-to-br from-[#ff3b6b] to-[#ff6b8a] flex items-center justify-center font-bold text-white shadow-lg`}>
+            {name.charAt(0).toUpperCase()}
+        </div>
+    );
+}
+
+function ListenerList({ listeners }: { listeners: { id: string; name: string }[] }) {
+    console.log('[ListenerList] rendering, count:', listeners.length);
+    const [expanded, setExpanded] = useState(false);
+    const visibleListeners = expanded ? listeners : listeners.slice(0, 3);
+    const hasMore = listeners.length > 3;
+
+    return (
+        <div className="w-full space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#ff3b6b]/10">
+                        <Headphones className="h-3.5 w-3.5 text-[#ff3b6b]" />
+                    </div>
+                    <p className="text-xs font-semibold text-white/80">
+                        {listeners.length} {listeners.length === 1 ? 'listener' : 'listeners'}
+                    </p>
+                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
+                {visibleListeners.map(listener => (
+                    <div 
+                        key={listener.id} 
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05] transition-colors"
+                    >
+                        <ListenerAvatar name={listener.name} size="sm" />
+                        <span className="text-sm text-white/80 truncate">{listener.name}</span>
+                    </div>
+                ))}
+            </div>
+            {hasMore && (
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="text-xs text-[#ff3b6b] hover:text-[#ff6b8a] transition-colors"
+                >
+                    {expanded ? 'Show less' : `+${listeners.length - 3} more`}
+                </button>
+            )}
+        </div>
+    );
+}
+
 export function RoomPanel() {
     const setRoomPanelOpen = useUIStore(s => s.setRoomPanelOpen);
-    const { isHost, roomName, tunnelUrl, connectionStatus, roomState, leaveRoom } = useListenAlongStore();
+    const { isHost, roomName, connectionStatus, roomState, leaveRoom } = useListenAlongStore();
     const [copied, setCopied] = useState(false);
 
     const roomLink = roomName ? `https://m14u.pages.dev/room/${roomName}` : '';
@@ -87,6 +137,11 @@ export function RoomPanel() {
                             </button>
                         </div>
                     </div>
+
+                    {/* Listeners */}
+                    {roomState?.listeners && roomState.listeners.length > 0 && (
+                        <ListenerList listeners={roomState.listeners} />
+                    )}
                 </div>
             )}
 

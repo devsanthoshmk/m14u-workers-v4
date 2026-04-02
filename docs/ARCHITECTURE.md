@@ -181,42 +181,87 @@ To preserve page state (scroll position, fetched data, input queries) when navig
 6. **Lyrics auto-scroll** — pauses on user scroll, resumes after 5s inactivity
 7. **Error boundaries** — failed song loads show clear error state with retry
 
-## Listen Along Feature (V1 ACK + FCM)
+## Listen Along Feature (SSE + Long-Poll)
 
-M14U supports synchronized listening using backend room state as source of truth, with Firebase Cloud Messaging (FCM) for room events and ACK-driven online presence.
+M14U supports synchronized listening using a local tunnel server with Server-Sent Events (SSE) for real-time state updates.
+
+### Architecture
+
+```
+┌─────────────────┐     ┌─────────────────────────────────────┐
+│   Android Host  │     │         Member Browser              │
+│                 │     │                                     │
+│  TunnelService  │◄───►│  listenAlongStore                   │
+│  :8080 (NanoHTTPD)   │  - long-poll /events?since=&clientId│
+│                 │     │                                     │
+│  /join    POST  │     │                                     │
+│  /listeners GET │     │                                     │
+│  /events   GET  │     │                                     │
+└─────────────────┘     └─────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **Host** creates room via `listenAlongStore.createRoom(roomName)` → starts tunnel, creates `/join`, `/listeners`, `/events` endpoints
+2. **Member** visits `/room/<roomName>` → sees name input screen
+3. **Member** enters display name and clicks Join → POSTs to `/join` with `{name}`, receives `clientId` + initial state
+4. **Member** long-polls `/events?since=<timestamp>&clientId=<id>` → receives roomState updates
+5. **Host** pushState() injects `listeners` array into JSON → all members see current listeners
 
 ### Core Components
 
-1. **`listenAlongStore.ts` (Zustand Store)**:
-   - Manages the high-level room state (room code, peer list).
-   - On the **Host**: Listens to `playerStore` queue/playback changes and pushes state via PUT.
-   - On the **Member**: Handles `queue_update` FCM events, fetches latest room state, and applies to `playerStore`.
-   - Handles **Reload Recovery**: Uses `sessionStorage` to automatically resume hosting or re-join rooms on page refresh.
+1. **`listenAlongStore.ts`** (Zustand Store):
+   - Manages room state (isInRoom, isHost, tunnelUrl, roomState)
+   - Host: calls `createRoom()` → starts tunnel server
+   - Member: calls `joinRoom(roomName, displayName)` → registers with `/join`, gets clientId
+   - Long-poll loop with exponential backoff
+   - Persists room membership via sessionStorage for reload recovery
 
-2. **`services/fcm.ts`**:
-   - Initializes Firebase messaging.
-   - Registers foreground listener + service worker bridge messages.
-   - Requests notification permission and obtains FCM token.
+2. **TunnelService.kt** (Android):
+   - NanoHTTPD server with `/join`, `/listeners`, `/events` routes
+   - `ConnectedClient` data class tracks {id, name, lastSeen}
+   - Stale cleanup: removes clients not seen for >60s
+   - Injects `listeners: [{id, name}, ...]` into roomState JSON on each push
 
-3. **`public/firebase-messaging-sw.js`**:
-   - Receives background FCM messages.
-   - Forwards event payloads to app tabs.
-   - Shows host notifications for member join/leave only when app is backgrounded.
+3. **RoomPage.tsx**:
+   - **Before join**: Name input screen with "Join" button
+   - **After join**: Player UI + "Up Next" queue section showing upcoming songs
+
+4. **RoomPanel.tsx** (Host view):
+   - Shows listener count badge
+   - Lists connected listener names below QR code
+
+### Types (src/types/listenAlong.ts)
+
+```ts
+export interface RoomListener {
+  id: string;
+  name: string;
+}
+
+export interface RoomState {
+  roomName: string;
+  currentSong: TrackItem | null;
+  queue: QueueItem[];
+  queueIndex: number | null;
+  isPlaying: boolean;
+  playbackStartedAt: number;
+  timestamp: number;
+  listeners: RoomListener[];
+}
+```
 
 ### Event Flow
 
-- **Join**: Member POSTs to `/api/v1/rooms/:code/join`, then sends ACK + registers FCM token.
-- **Host Sync**: Host pushes latest state to `PUT /api/v1/rooms/:code/state` on meaningful changes.
-- **Queue Fanout**: Backend sends FCM data event (`queue_update`) to members.
-- **Member Apply**: Member fetches latest `/api/v1/rooms/:code`, applies state, then ACKs the event.
-- **Presence**: Online/offline is derived from ACK freshness (no heartbeat endpoint).
+- **Host Creates Room**: `createRoom("TestRoom")` → returns tunnel URL
+- **Member Joins**: `joinRoom("TestRoom", "Alice")` → POST `/join {name}` → receives `{clientId, state}`
+- **State Sync**: Host pushes player changes → all members long-poll and receive updated state
+- **Presence**: Members pass `clientId` in polls → server updates `lastSeen` → stale clients cleaned up
 
-### Sync Timing Model (Clock-Skew Safe)
+### Sync Timing Model
 
-- Member playback target is computed from host state delta (`updatedAt - playStartedAt`) plus local elapsed time since receipt.
-- Network transit is compensated using request RTT (one-way estimate = RTT/2).
-- This avoids relying on direct host vs member wall-clock equality, so cross-device clock mismatch no longer causes drift.
-- After new-song load, target time is recalculated again to include decode/buffer delay before final seek/play.
+- Uses wall-clock delta: `targetTime = roomState.playbackStartedAt + (now - roomState.timestamp)`
+- No clock-skew compensation needed since both host and member use same wall clock from server state
 
 ---
 

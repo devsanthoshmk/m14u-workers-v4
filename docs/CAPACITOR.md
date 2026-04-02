@@ -2,13 +2,15 @@
 
 ## Overview
 
-M14U's Android app is a **Capacitor shell** that wraps the existing React SPA in a native Android WebView. The key addition is a **native Capacitor plugin** that uses **NewPipeExtractor** (the same library behind the NewPipe Android app) to extract audio stream URLs directly on the device — eliminating the dependency on unreliable Invidious proxy servers.
+M14U's Android app is a **Capacitor shell** that wraps the existing React SPA in a native Android WebView. It strictly features several native architectural upgrades unachievable in browsers:
+
+1. **Native Stream Extraction**: A Capacitor plugin uses **NewPipeExtractor** (the same library behind the NewPipe app) to extract audio stream URLs directly on the device — completely eliminating dependency on unreliable third-party Invidious proxy servers.
+2. **Foreground Synchronization (TunnelService)**: A **DevTunnelPlugin** manages native `cloudflared` ARM binaries inside a persistent Android Foreground Service. This enables Android users to host secure, globally-available "Listen Along" WebSocket synchronization rooms without aggressive OS battery killing.
 
 ```
 Web (browser):    playSong() → getStreamData() → Invidious proxy → audio.src
 Android (native): playSong() → getStreamData() → Capacitor plugin → NewPipeExtractor → audio.src
                                                        ↓ (on failure, retry once)
-                                                       ↓ (still fails)
                                                    Invidious proxy (fallback)
 ```
 
@@ -52,6 +54,9 @@ Capacitor is a cross-platform native runtime. It does three things:
 │  │  │                                  │     │   │
 │  │  │  AppUpdater                      │     │   │
 │  │  │  └── GitHub Release checker      │     │   │
+│  │  │                                  │     │   │
+│  │  │  DevTunnelPlugin                 │     │   │
+│  │  │  └── TunnelService (cloudflared) │     │   │
 │  │  └──────────────────────────────────┘     │   │
 │  └──────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────┘
@@ -79,7 +84,9 @@ M14U-workers-v4/
 │           ├── MainActivity.java    # Registers native plugins
 │           ├── DownloaderImpl.kt    # OkHttp-based HTTP downloader for NewPipe
 │           ├── StreamExtractorPlugin.kt  # Capacitor plugin: extracts audio streams
-│           └── AppUpdater.kt        # Capacitor plugin: checks GitHub for APK updates
+│           ├── AppUpdater.kt        # Capacitor plugin: checks GitHub for APK updates
+│           ├── DevTunnelPlugin.kt   # Capacitor plugin: controls Cloudflare tunnel
+│           └── TunnelService.kt     # Foreground service wrapping native cloudflared server
 ```
 
 ---

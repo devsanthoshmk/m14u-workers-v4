@@ -145,6 +145,15 @@ Access via `window.m14u` in browser console.
 | `load.playlist(id, all?)` | Load playlist | `await m14u.load.playlist('abc')` |
 | `load.channel(id)` | Load channel | `await m14u.load.channel('abc')` |
 
+## Listen Along / Room
+| Function | Description | Example |
+|---|---|---|
+| `room.create(name)` | Create a new room, returns tunnel URL | `await m14u.room.create('TestRoom')` |
+| `room.join(displayName, roomName?)` | Join a room with display name | `await m14u.room.join('Alice', 'TestRoom')` |
+| `room.leave()` | Leave current room | `m14u.room.leave()` |
+| `room.listeners()` | Get connected listeners | `m14u.room.listeners()` |
+| `room.state()` | Get full room state | `m14u.room.state()` |
+
 ## Meta
 | Function | Description | Example |
 |---|---|---|

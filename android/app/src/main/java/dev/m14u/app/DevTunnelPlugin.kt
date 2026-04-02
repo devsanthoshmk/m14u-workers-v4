@@ -40,6 +40,8 @@ class DevTunnelPlugin : Plugin(), TunnelService.EventListener {
             return
         }
 
+        val previousGeneration = TunnelService.instance?.startupGeneration ?: 0L
+
         // Register as event listener
         TunnelService.instance?.eventListener = this
 
@@ -60,13 +62,17 @@ class DevTunnelPlugin : Plugin(), TunnelService.EventListener {
             var url: String? = null
             while (System.currentTimeMillis() - startTime < URL_POLL_TIMEOUT_MS) {
                 // Re-register listener after service creates its instance
-                TunnelService.instance?.let { it.eventListener = this@DevTunnelPlugin }
-                url = TunnelService.instance?.currentTunnelUrl
-                if (url != null) break
+                val service = TunnelService.instance
+                service?.eventListener = this@DevTunnelPlugin
+
+                val generation = service?.startupGeneration ?: 0L
+                url = service?.currentTunnelUrl
+                if (generation > previousGeneration && !url.isNullOrBlank()) break
+
                 delay(URL_POLL_INTERVAL_MS)
             }
             withContext(Dispatchers.Main) {
-                if (url != null) {
+                if (!url.isNullOrBlank()) {
                     call.resolve(JSObject().apply { put("url", url) })
                 } else {
                     call.reject("Timed out waiting for tunnel URL")

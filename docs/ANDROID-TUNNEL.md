@@ -17,14 +17,14 @@ To stop the tunnel, you must explicitly call `m14u.sockstop()` or dismiss the no
 
 ## How It Works
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │  Android Device                                     │
 │                                                     │
 │  ┌──────────────┐     ┌──────────────────────────┐  │
-│  │  NanoHTTPD    │◄────│  cloudflared binary       │  │
+│  │  TunnelService│◄────│  cloudflared binary       │  │
 │  │  WebSocket    │     │  (ARM64, CGO+NDK build)   │  │
-│  │  Echo Server  │     │                            │  │
+│  │  Sync Server  │     │                            │  │
 │  │  :8080        │     │  tunnel --url              │  │
 │  └──────────────┘     │  http://localhost:8080      │  │
 │                        └─────────┬────────────────┘  │
@@ -46,49 +46,45 @@ To stop the tunnel, you must explicitly call `m14u.sockstop()` or dismiss the no
                         └─────────────────────┘
 ```
 
-1. An HTTP + WebSocket server starts on a local port (default 8080)
-2. `cloudflared` binary creates a Quick Tunnel to that port
-3. The tunnel URL is published to the KV service under the given username
-4. Anyone can read the URL via `GET https://m14u.sanpro.workers.dev/?key=<username>`
-5. Opening the tunnel URL in a browser shows a live message dashboard
-6. Messages sent from the console appear instantly on all connected browsers
+1. A native Kotlin Socket WebSocket server (`RoomHttpServer`) starts on a local port (default 8080)
+2. `cloudflared` binary natively creates a Quick Tunnel to that local proxy port.
+3. The tunnel URL is published to the Cloudflare KV service.
+4. Remote instances check the URL via `GET https://m14u.sanpro.workers.dev/?key=<roomName>`.
+5. WebSocket frames directly parse and replace global Zustand variables across devices to sync audio states perfectly in sub-2-second bounds.
 
-## Usage (Webview Console)
+## Usage (Webview Console API)
+
+The testing ecosystem is natively mapped for the **Listen Along** feature via the window `m14u.room.*` console namespace:
 
 ```js
-// Start tunnel — returns the trycloudflare URL
-const url = await m14u.socketit("username1")
+// Become a host, start the service natively, and generate a new tunnel
+const url = await m14u.room.create("roomBase")
+// → ⚡ Room live: https://xxxx.trycloudflare.com
+// → 🔗 Share: https://m14u.pages.dev/room/roomBase
 
-// Send a message — appears on all browsers viewing the tunnel URL
-await m14u.sockmsg("hello world")
-// → 📤 Sent to 2 client(s): hello world
+// Print out an array of everyone currently connected
+m14u.room.listeners()
+// → [{ id: "uuid", name: "Alice" }]
 
-// Check current tunnel URL
-await m14u.sockurl()
+// Completely shred the background TunnelService and shut connections
+m14u.room.leave()
 
-// Stop tunnel and WebSocket server
-await m14u.sockstop()
+// See live Zustand debug dump of sync stats 
+m14u.room.state()
 ```
 
-Or using Capacitor directly:
+Or calling Capacitor directly:
 
 ```js
 const { DevTunnel } = Capacitor.Plugins;
-await DevTunnel.startTunnel({ port: 8080, username: "username1" });
-await DevTunnel.sendMessage({ message: "hello" });
-await DevTunnel.getTunnelUrl();
+await DevTunnel.startTunnel({ port: 8080, username: "roomName" });
+await DevTunnel.updateRoomState({ state: '{"queue": []...}' }); 
 await DevTunnel.stopTunnel();
 await DevTunnel.debugTunnel(); // diagnostics
 ```
 
-## Live Dashboard
-
-When someone opens the tunnel URL (e.g. `https://xxx-yyy-zzz.trycloudflare.com`) in a browser, they see a live dashboard:
-
-- Messages sent via `m14u.sockmsg(...)` appear in real-time
-- Visitors can also type messages from the browser input field
-- Shows connection status and client count
-- Auto-reconnects on disconnect
+## Legacy Sync Dashboard
+The test Web Dashboard has been retired. The base `http://localhost:8080` route simply drops a `<html><body><p>Sample route</p></body></html>` HTTP response, enforcing clients to exclusively use the secured `/ws` upgrade path for real-time synchronization.
 
 ## File Overview
 
@@ -313,3 +309,34 @@ Capacitor.Plugins.DevTunnel.addListener('tunnelLog', (e) => {
 ```bash
 npx cap sync android && npx cap run android
 ```
+
+## Client Registration & Tracking
+
+The tunnel server utilizes a fully unified WebSocket architecture for member registration and tracking during Listen Along sessions, entirely discarding legacy HTTP endpoints or long-polling mechanisms.
+
+### Core Architecture
+
+- **Host Device:** The host does *not* open a WebSocket connection. It relies natively on the `tunnelPanic` callbacks for connectivity (offline/reconnecting) and pushes state silently using the Capacitor plugin: `DevTunnel.updateRoomState({ state: json })`.
+- **Guest Devices:** Guests connect straight to the exposed Cloudflare Quick Tunnel using standard WebSockets (`wss://<tunnel_url>/ws`).
+
+### Live Guest Tracking
+
+There are no `/join` or `/listeners` HTTP routes. Everything routes instantly via WebSocket frames in `TunnelService.kt`:
+
+1. **socket.onopen():** The guest transmits `{"event": "join", "clientId": "...", "memberName": "..."}` globally.
+2. **Native Socket Binding:** The Kotlin background service natively intercepts the frame and binds the ID to the active TCP Socket using a `ConcurrentHashMap<Socket, String>`.
+3. **Broadcasting Identity:** The server reflects the `join` frame down the pipe to all connected users.
+4. **Host Orchestration:** The React Host intercepts the `join` (and `leave`) broadcasts. It modifies its own global `roomState.listeners` array and then effortlessly pushes the new monolithic `roomState` JSON back to the native proxy, updating everyone's UI.
+
+### Disconnection & Memory Cleanup
+
+- Android's native `finally { }` block inside `RoomHttpServer.kt` TCP sockets detects hard closes, drops, or app terminations natively.
+- It plucks the disconnected `Socket` natively from the `ConcurrentHashMap` and instantly broadcasts `{"event": "leave", "clientId": "uuid"}`.
+- *Timeout Prevention:* Cloudflare Quick Tunnels sever WebSockets with >100 seconds of inactivity. To keep tunnels alive efficiently, guests fire a completely silent WebSocket `{"event": "ping"}` exactly every **99,000 milliseconds** (99 seconds).
+
+### Reconnection Fallback (Guest Self-Healing)
+
+Since Cloudflare proxies rotate `trycloudflare.com` URLs when the Android native host hits a panic, Guests will naturally disconnect when the pipe breaks:
+- On `socket.onclose`, the guest initializes an exponential backoff sequence.
+- Instead of blindly hammering the dead WebSocket pipe forever, **before every retry**, the Guest automatically checks the remote Cloudflare KV (`m14u.sanpro.workers.dev?key=username`).
+- If the host rotated the tunnel URL globally, the Guest gracefully adopts the new URL, drops its backoff timer instantly (`_reconnectAttempt = 1`), and re-establishes the connection natively.

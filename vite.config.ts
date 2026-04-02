@@ -28,5 +28,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['@anthropic-ai/sdk']
+  },
+  build: {
+    sourcemap: true,
+    minify: false,
   }
 })

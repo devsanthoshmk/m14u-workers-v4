@@ -340,12 +340,20 @@ const api = {
         return url;
       }, name);
     },
-    async join(name: string) {
+    async join(displayName: string, roomName?: string) {
       return actAsync('room.join', async () => {
-        if (!name) throw new Error('room.join: room name is required');
-        await listenAlong().joinRoom(name);
-        console.log(`%c🎧 Joined room "${name}"`, 'color:#00ff88;font-weight:bold');
-      }, name);
+        if (!displayName) throw new Error('room.join: display name is required');
+        const room = roomName || listenAlong().roomName;
+        if (!room) throw new Error('room.join: room name is required (pass as second argument or navigate to a room first)');
+        await listenAlong().joinRoom(room, displayName);
+        console.log(`%c🎧 Joined room "${room}" as "${displayName}"`, 'color:#00ff88;font-weight:bold');
+      }, { displayName, roomName });
+    },
+    listeners() {
+      return act('room.listeners', () => {
+        const state = listenAlong().roomState;
+        return state?.listeners || [];
+      });
     },
     leave() {
       return act('room.leave', () => {
@@ -392,7 +400,7 @@ const api = {
       'state.player()', 'state.ui()', 'state.search()', 'state.list()',
       'load.album(id)', 'load.artist(id)', 'load.playlist(id, all?)', 'load.channel(id)',
       'socketit(username, port?)', 'sockmsg(message)', 'sockstop()', 'sockurl()',
-      'room.create(name)', 'room.join(name)', 'room.leave()', 'room.state()',
+      'room.create(name)', 'room.join(displayName, roomName?)', 'room.leave()', 'room.state()', 'room.listeners()',
       'help()', 'version()',
     ];
     console.log('%cm14u Console API', 'font-size:16px;font-weight:bold;color:#ff3b6b');

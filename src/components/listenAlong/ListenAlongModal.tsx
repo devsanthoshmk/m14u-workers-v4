@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Radio, Loader2, Users, Plus, Copy, Check, LogOut, Wifi, WifiOff } from 'lucide-react';
+import { X, Radio, Loader2, Users, Plus, Copy, Check, LogOut, Wifi, WifiOff, Headphones } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { QRCodeSVG } from 'qrcode.react';
@@ -23,8 +23,11 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
     const [createdUrl, setCreatedUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const { createRoom, isInRoom, isHost, roomName: activeRoomName, connectionStatus, leaveRoom } = useListenAlongStore();
+    const { createRoom, isInRoom, isHost, roomName: activeRoomName, connectionStatus, roomState, leaveRoom } = useListenAlongStore();
     const navigate = useNavigate();
+
+    const listeners = roomState?.listeners || [];
+    const hasListeners = listeners.length > 0;
 
     const activeRoomLink = activeRoomName ? `https://m14u.pages.dev/room/${activeRoomName}` : '';
     const roomLink = roomName ? `https://m14u.pages.dev/room/${roomName}` : '';
@@ -171,6 +174,31 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
                                                             {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
                                                         </button>
                                                     </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Listeners list (host) - scrollable horizontal */}
+                                        {isHost && hasListeners && (
+                                            <div className="w-full">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Headphones className="h-3.5 w-3.5 text-[#ff3b6b]" />
+                                                    <span className="text-xs font-medium text-white/40 uppercase tracking-wider">
+                                                        {listeners.length} {listeners.length === 1 ? 'listener' : 'listeners'} connected
+                                                    </span>
+                                                </div>
+                                                <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                                    {listeners.map((l) => (
+                                                        <div
+                                                            key={l.id}
+                                                            className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06]"
+                                                        >
+                                                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff3b6b] to-[#ff6b8a] flex items-center justify-center text-[10px] font-bold text-white">
+                                                                {l.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <span className="text-sm text-white/80 whitespace-nowrap">{l.name}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
                                         )}

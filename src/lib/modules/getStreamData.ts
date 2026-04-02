@@ -40,6 +40,20 @@ export default async function getStreamData(
         const result = nativeData as unknown as Invidious;
         streamCache.set(id, { data: result, timestamp: Date.now() });
         console.log(`Native extraction succeeded for ${id} (attempt ${attempt + 1})`);
+        
+        // Log the direct audio stream URLs in the webview
+        if (result.adaptiveFormats && result.adaptiveFormats.length > 0) {
+          const audioStreams = result.adaptiveFormats.filter(f => f.type?.startsWith('audio/'));
+          // console.log(`[yt-dlp] Found ${audioStreams.length} audio streams for ${id}:`);
+          // audioStreams.forEach((stream, index) => {
+            // console.log(`[yt-dlp] Stream ${index + 1}: ${stream.bitrate}bps - ${stream.encoding}`);
+            // console.log(`[yt-dlp] URL: ${stream.url}`);
+          // });
+          if (audioStreams.length > 0) {
+            // console.log(`[yt-dlp] Best audio URL: ${audioStreams[0].url}`);
+          }
+        }
+        
         return result;
       } catch (e) {
         console.warn(`Native extraction attempt ${attempt + 1} failed:`, e);

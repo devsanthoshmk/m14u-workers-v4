@@ -1,0 +1,785 @@
+
+ ▐▛███▜▌   Claude Code v2.1.71
+▝▜█████▛▘  Sonnet 4.6 · API Usage Billing
+  ▘▘ ▝▝    ~/EDUCATION CONTENT/Projects/M14U-workers-v4
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ Listen Along — Client Registration + Queue Display for Members               │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ The Listen Along feature works (host creates room, members long-poll         │
+│ /events). But:                                                               │
+│ - Members join anonymously — host has no idea who's listening                │
+│ - Members can't see the upcoming queue                                       │
+│ - No handshake/registration — server can't track individual clients          │
+│                                                                              │
+│ Changes                                                                      │
+│                                                                              │
+│ Step 1: Android — TunnelService.kt RoomHttpServer                            │
+│                                                                              │
+│ Add client tracking and POST /join endpoint:                                 │
+│                                                                              │
+│ - New: data class ConnectedClient(val id: String, val name: String, var      │
+│ lastSeen: Long)                                                              │
+│ - New: CopyOnWriteArrayList<ConnectedClient> for tracking                    │
+│ - POST /join: parse JSON body { "name": "..." }, generate UUID clientId, add │
+│  to list, return { "clientId": "<uuid>", "state": <roomStateJson> }          │
+│ - GET /events?since=&clientId=: update client's lastSeen timestamp on each   │
+│ poll                                                                         │
+│ - GET /listeners: return [{ "id": "...", "name": "..." }, ...]               │
+│ - Include listeners array in roomState JSON pushed to clients                │
+│ - Stale cleanup: remove clients not seen for >60s (lazy check in pushState)  │
+│ - Handle CORS for POST (add POST to allowed methods)                         │
+│ - Parse POST body: session.parseBody(HashMap<String, String>()) then read    │
+│ session.queryParameterString or the files map                                │
+│                                                                              │
+│ Step 2: Types — src/types/listenAlong.ts                                     │
+│                                                                              │
+│ Add RoomListener interface and listeners field to RoomState:                 │
+│ export interface RoomListener {                                              │
+│     id: string;                                                              │
+│     name: string;                                                            │
+│ }                                                                            │
+│ // RoomState gets: listeners: RoomListener[]                                 │
+│                                                                              │
+│ Step 3: Store — src/stores/listenAlongStore.ts                               │
+│                                                                              │
+│ - Add to state: clientId: string | null, memberName: string | null           │
+│ - joinRoom(roomName, name) — POST to tunnelUrl/join with { name }, get       │
+│ clientId + initial state                                                     │
+│ - Long-poll passes clientId: /events?since=<ts>&clientId=<id>                │
+│ - Reset clientId/memberName on leave                                         │
+│                                                                              │
+│ Step 4: RoomPage — src/pages/RoomPage.tsx                                    │
+│                                                                              │
+│ Two screens:                                                                 │
+│ 1. Name input (before join): text input for display name + "Join" button,    │
+│ room name shown                                                              │
+│ 2. Room view (after join): existing song/progress UI + new queue section     │
+│ below                                                                        │
+│                                                                              │
+│ Queue section:                                                               │
+│ - "Up Next" header with song count                                           │
+│ - Scrollable list of roomState.queue items after queueIndex                  │
+│ - Each item: small thumbnail (40x40), title, artist                          │
+│ - Currently playing item highlighted with accent color                       │
+│                                                                              │
+│ Step 5: RoomPanel — src/components/listenAlong/RoomPanel.tsx                 │
+│                                                                              │
+│ Host view additions:                                                         │
+│ - Show listener count badge                                                  │
+│ - List connected listener names below QR code                                │
+│                                                                              │
+│ Step 6: Console API — src/lib/testing/console-api.ts                         │
+│                                                                              │
+│ - room.join(name, roomName?) — pass name to joinRoom                         │
+│ - room.listeners() — return roomState.listeners                              │
+│                                                                              │
+│ Files                                                                        │
+│                                                                              │
+│ ┌──────────────────────────────────────────┬───────────────────────────────┐ │
+│ │                   File                   │            Action             │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ android/.../TunnelService.kt             │ Add /join, /listeners, client │ │
+│ │                                          │  tracking                     │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ src/types/listenAlong.ts                 │ Add RoomListener, listeners   │ │
+│ │                                          │ to RoomState                  │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ src/stores/listenAlongStore.ts           │ Add clientId, memberName,     │ │
+│ │                                          │ update joinRoom               │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ src/pages/RoomPage.tsx                   │ Add name input screen + queue │ │
+│ │                                          │  display                      │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ src/components/listenAlong/RoomPanel.tsx │ Show listener count/names for │ │
+│ │                                          │  host                         │ │
+│ ├──────────────────────────────────────────┼───────────────────────────────┤ │
+│ │ src/lib/testing/console-api.ts           │ Update room.join, add         │ │
+│ │                                          │ room.listeners                │ │
+│ └──────────────────────────────────────────┴───────────────────────────────┘ │
+│                                                                              │
+│ Verification                                                                 │
+│                                                                              │
+│ 1. npx tsc --noEmit && npx vite build                                        │
+│ 2. npx cap sync android && npx cap run android                               │
+│ 3. Host creates room → open /room/TestRoom in browser                        │
+│ 4. See name input → enter name → click Join                                  │
+│ 5. Host's RoomPanel shows listener name + count                              │
+│ 6. Member sees queue of upcoming songs                                       │
+│ 7. Host changes song → member queue updates in real-time                     │
+│ 8. Member closes tab → host listener list updates within 60s                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+● I'll read all the relevant files first to understand the current state.
+
+● Searched for 1 pattern, read 3 files (ctrl+o to expand)
+
+● Now I have all the context. Let me implement all 6 steps. I'll start with the
+  files that have no dependencies on each other.
+
+● Step 1: Types and Step 2: Store first (types has no deps, store depends on
+  types).
+
+● Update(src/types/listenAlong.ts)
+  ⎿  Added 6 lines
+       1  import type { TrackItem } from './music';                      
+       2  import type { QueueItem } from './player';                     
+       3                                                                 
+       4 +export interface RoomListener {                                
+       5 +    id: string;                                                
+       6 +    name: string;                                              
+       7 +}                                                              
+       8 +                                                               
+       9  export interface RoomState {                                   
+      10      roomName: string;                                          
+      11      currentSong: TrackItem | null;                             
+     ...
+      11      playbackStartedAt: number;                                 
+      12      /** Milliseconds — when this state snapshot was generated  
+          */                                                             
+      13      timestamp: number;                                         
+      14 +    listeners: RoomListener[];                                 
+      15  }                                                              
+      16                                                                 
+      17  export type ConnectionStatus = 'disconnected' | 'connecting' | 
+           'connected' | 'reconnecting';                                 
+
+● Now update buildRoomState to include listeners: [] and update the store with
+  clientId/memberName + updated joinRoom:
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 1 line, removed 1 line
+      2  import { Capacitor } from '@capacitor/core';                    
+      3  import DevTunnel from '@/plugins/DevTunnel';                    
+      4  import { usePlayerStore } from '@/stores/playerStore';          
+      5 -import type { RoomState, ConnectionStatus                       
+        -} from '@/types/listenAlong';                                   
+      5 +import type { RoomState, ConnectionStatus, RoomListener         
+        +} from '@/types/listenAlong';                                   
+      6                                                                  
+      7  const KV_BASE = 'https://m14u.sanpro.workers.dev/';             
+      8  const BACKOFF_CAP_MS = 30_000;                                  
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 5 lines, removed 1 line
+      18      roomState: RoomState | null;                               
+      19      error: string | null;                                      
+      20                                                                 
+      21 +    // member                                                  
+      22 +    clientId: string | null;                                   
+      23 +    memberName: string | null;                                 
+      24 +                                                               
+      25      // host                                                    
+      26      createRoom: (roomName: string) => Promise<string>;         
+      27      // member                                                  
+      28 -    joinRoom: (roomName: string) => Promise<void>;             
+      28 +    joinRoom: (roomName: string, name?: string                 
+         +) => Promise<void>;                                            
+      29      leaveRoom: () => void;                                     
+      30  }                                                              
+      31                                                                 
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 1 line
+      47          isPlaying: p.isPlaying,                                
+      48          playbackStartedAt: Date.now() * 1000 - (p.currentTime  
+          || 0) * 1_000_000,                                             
+      49          timestamp: Date.now(),                                 
+      50 +        listeners: [],                                         
+      51      };                                                         
+      52  }                                                              
+      53                                                                 
+
+● Now update connectSSE to pass clientId in the poll URL:
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 3 lines, removed 1 line
+      87      async function poll() {                                    
+      88          while (_longPolling) {                                 
+      89              try {                                              
+      90 -                const res = await                              
+         -fetch(`${tunnelUrl}/events?since=${lastTimestamp}`, {          
+      90 +                const clientId =                               
+         +useListenAlongStore.getState().clientId;                       
+      91 +                const clientParam = clientId ?                 
+         +`&clientId=${clientId}` : '';                                  
+      92 +                const res = await fetch(`${tunnelUrl}/events?s 
+         +ince=${lastTimestamp}${clientParam}`, {                        
+      93                      signal: controller.signal,                 
+      94                  });                                            
+      95                  if (!res.ok) throw new Error(`HTTP             
+          ${res.status}`);                                               
+
+● Now update the store initial state and joinRoom/leaveRoom:
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 2 lines
+      176      connectionStatus: 'disconnected',                         
+      177      roomState: null,                                          
+      178      error: null,                                              
+      179 +    clientId: null,                                           
+      180 +    memberName: null,                                         
+      181                                                                
+      182      createRoom: async (roomName: string) => {                 
+      183          if (!Capacitor.isNativePlatform()) {                  
+
+● Now update joinRoom to POST to /join:
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 22 lines, removed 2 lines
+      207          return url;                                           
+      208      },                                                        
+      209                                                                
+      210 -    joinRoom: async (roomName: string) => {                   
+      210 +    joinRoom: async (roomName: string, name?: string) => {    
+      211          set({ connectionStatus: 'connecting', error: null,    
+           roomName });                                                  
+      212                                                                
+      213          try {                                                 
+     ...
+      216              _firstConnectTime = Date.now();                   
+      217              _reconnectAttempt = 0;                            
+      218                                                                
+      219 -            set({ isInRoom: true, isHost: false, roomName,    
+          -tunnelUrl });                                                 
+      219 +            let clientId: string | null = null;               
+      220 +            const memberName = name || null;                  
+      221 +                                                              
+      222 +            // If a name is provided, register with POST      
+          +/join                                                         
+      223 +            if (name) {                                       
+      224 +                const joinRes = await                         
+          +fetch(`${tunnelUrl}/join`, {                                  
+      225 +                    method: 'POST',                           
+      226 +                    headers: { 'Content-Type':                
+          +'application/json' },                                         
+      227 +                    body: JSON.stringify({ name }),           
+      228 +                });                                           
+      229 +                if (joinRes.ok) {                             
+      230 +                    const joinData = await joinRes.json();    
+      231 +                    clientId = joinData.clientId || null;     
+      232 +                    // Use initial state from join response   
+      233 +                    if (joinData.state) {                     
+      234 +                        set({ roomState: joinData.state });   
+      235 +                    }                                         
+      236 +                }                                             
+      237 +            }                                                 
+      238 +                                                              
+      239 +            set({ isInRoom: true, isHost: false, roomName,    
+          +tunnelUrl, clientId, memberName });                           
+      240              connectSSE(tunnelUrl, roomName);                  
+      241          } catch (e: any) {                                    
+      242              set({ connectionStatus: 'disconnected', error:    
+           e.message });                                                 
+
+● Update leaveRoom to reset clientId/memberName:
+
+● Update(src/stores/listenAlongStore.ts)
+  ⎿  Added 2 lines
+      260              connectionStatus: 'disconnected',                 
+      261              roomState: null,                                  
+      262              error: null,                                      
+      263 +            clientId: null,                                   
+      264 +            memberName: null,                                 
+      265          });                                                   
+      266      },                                                        
+      267  }));                                                          
+
+● Now the Android TunnelService.kt — add ConnectedClient, /join, /listeners,
+  client tracking:
+
+● Update(android/app/src/main/java/dev/m14u/app/TunnelService.kt)
+  ⎿  Added 3 lines
+      459          private data class SSEClient(val queue:               
+           LinkedBlockingQueue<String>)                                  
+      460          private val clients =                                 
+           CopyOnWriteArrayList<SSEClient>()                             
+      461                                                                
+      462 +        data class ConnectedClient(val id: String, val name:  
+          +String, @Volatile var lastSeen: Long)                         
+      463 +        private val connectedClients =                        
+          +CopyOnWriteArrayList<ConnectedClient>()                       
+      464 +                                                              
+      465          fun pushState(json: String) {                         
+      466              roomStateJson = json                              
+      467              val dead = mutableListOf<SSEClient>()             
+
+● Update pushState to clean stale clients and inject listeners into the JSON:
+
+● Update(android/app/src/main/java/dev/m14u/app/TunnelService.kt)
+  ⎿  Added 17 lines, removed 2 lines
+      463          private val connectedClients =                        
+           CopyOnWriteArrayList<ConnectedClient>()                       
+      464                                                                
+      465          fun pushState(json: String) {                         
+      466 -            roomStateJson = json                              
+      466 +            // Remove stale clients (not seen for >60s)       
+      467 +            val now = System.currentTimeMillis()              
+      468 +            connectedClients.removeAll { now - it.lastSeen >  
+          +60_000 }                                                      
+      469 +                                                              
+      470 +            // Inject listeners array into the state JSON     
+      471 +            val enriched = try {                              
+      472 +                val obj = org.json.JSONObject(json)           
+      473 +                val arr = org.json.JSONArray()                
+      474 +                for (c in connectedClients) {                 
+      475 +                    arr.put(org.json.JSONObject().put("id",   
+          +c.id).put("name", c.name))                                    
+      476 +                }                                             
+      477 +                obj.put("listeners", arr)                     
+      478 +                obj.toString()                                
+      479 +            } catch (_: Exception) { json }                   
+      480 +                                                              
+      481 +            roomStateJson = enriched                          
+      482              val dead = mutableListOf<SSEClient>()             
+      483              for (client in clients) {                         
+      484                  try {                                         
+      485 -                    client.queue.offer(json)                  
+      485 +                    client.queue.offer(enriched)              
+      486                  } catch (_: Exception) {                      
+      487                      dead.add(client)                          
+      488                  }                                             
+
+● Now add /join, /listeners routes and update CORS + long-poll to handle
+  clientId:
+
+● Update(android/app/src/main/java/dev/m14u/app/TunnelService.kt)
+  ⎿  Added 17 lines
+      517                      }                                         
+      518                  }                                             
+      519                  uri == "/events" && method == Method.GET -> { 
+      520 +                    // Update lastSeen for known clients      
+      521 +                    val clientId =                            
+          +session.parms?.get("clientId")                                
+      522 +                    if (clientId != null) {                   
+      523 +                        connectedClients.find { it.id ==      
+          +clientId }?.lastSeen = System.currentTimeMillis()             
+      524 +                    }                                         
+      525                      serveLongPoll(session)                    
+      526                  }                                             
+      527 +                uri == "/join" && method == Method.POST -> {  
+      528 +                    serveJoin(session)                        
+      529 +                }                                             
+      530 +                uri == "/listeners" && method == Method.GET   
+          +-> {                                                          
+      531 +                    val arr = org.json.JSONArray()            
+      532 +                    for (c in connectedClients) {             
+      533 +                                                              
+          +arr.put(org.json.JSONObject().put("id", c.id).put("name",     
+          +c.name))                                                      
+      534 +                    }                                         
+      535 +                                                              
+          +newFixedLengthResponse(Response.Status.OK,                    
+          +"application/json", arr.toString()).also {                    
+      536 +                        addCorsHeaders(it)                    
+      537 +                    }                                         
+      538 +                }                                             
+      539                  else -> {                                     
+      540                                                                
+           newFixedLengthResponse(Response.Status.NOT_FOUND,             
+           "text/plain", "Not found").also {                             
+      541                          addCorsHeaders(it)                    
+
+● Add the serveJoin method and update CORS headers:
+
+● Update(android/app/src/main/java/dev/m14u/app/TunnelService.kt)
+  ⎿  Added 29 lines, removed 1 line
+      587              }                                                 
+      588          }                                                     
+      589                                                                
+      590 +        private fun serveJoin(session: IHTTPSession):         
+          +Response {                                                    
+      591 +            return try {                                      
+      592 +                val files = HashMap<String, String>()         
+      593 +                session.parseBody(files)                      
+      594 +                val bodyJson = files["postData"] ?: "{}"      
+      595 +                val body = org.json.JSONObject(bodyJson)      
+      596 +                val name = body.optString("name", "").ifEmpty 
+          + { "Anonymous" }                                              
+      597 +                                                              
+      598 +                val clientId =                                
+          +java.util.UUID.randomUUID().toString()                        
+      599 +                                                              
+          +connectedClients.add(ConnectedClient(clientId, name,          
+          +System.currentTimeMillis()))                                  
+      600 +                                                              
+      601 +                val result = org.json.JSONObject()            
+      602 +                result.put("clientId", clientId)              
+      603 +                // Include current state as initial payload   
+      604 +                try {                                         
+      605 +                    result.put("state",                       
+          +org.json.JSONObject(roomStateJson))                           
+      606 +                } catch (_: Exception) {}                     
+      607 +                                                              
+      608 +                newFixedLengthResponse(Response.Status.OK,    
+          +"application/json", result.toString()).also {                 
+      609 +                    addCorsHeaders(it)                        
+      610 +                }                                             
+      611 +            } catch (e: Exception) {                          
+      612 +                                                              
+          +newFixedLengthResponse(Response.Status.BAD_REQUEST,           
+          +"application/json",                                           
+      613 +                    """{"error":"${e.message}"}"""            
+      614 +                ).also { addCorsHeaders(it) }                 
+      615 +            }                                                 
+      616 +        }                                                     
+      617 +                                                              
+      618          private fun addCorsHeaders(response: Response) {      
+      619              response.addHeader("Access-Control-Allow-Origin", 
+            "*")                                                         
+      620 -            response.addHeader("Access-Control-Allow-Methods",
+          - "GET, OPTIONS")                                              
+      620 +            response.addHeader("Access-Control-Allow-Methods",
+          + "GET, POST, OPTIONS")                                        
+      621                                                                
+           response.addHeader("Access-Control-Allow-Headers", "*")       
+      622          }                                                     
+      623      }                                                         
+
+● Now Step 4: RoomPage — add name input screen + queue display:
+
+● Write(src/pages/RoomPage.tsx)
+  ⎿  Added 114 lines, removed 7 lines
+       1  import { useParams } from 'react-router-dom';                  
+       2  import { useEffect, useState } from 'react';                   
+       3  import { useListenAlongStore } from                            
+          '@/stores/listenAlongStore';                                   
+       4 -import { Radio, Wifi, WifiOff, Loader2 } from 'lucide-react';  
+       4 +import { Radio, Wifi, WifiOff, Loader2, Music, Users           
+         +} from 'lucide-react';                                         
+       5                                                                 
+       6  export function RoomPage() {                                   
+       7      const { roomName } = useParams<{ roomName: string }>();    
+       8 -    const { roomState, connectionStatus, error, joinRoom,      
+         -leaveRoom, isInRoom } = useListenAlongStore();                 
+       8 +    const { roomState, connectionStatus, error, joinRoom,      
+         +leaveRoom, isInRoom, memberName } = useListenAlongStore();     
+       9      const [elapsed, setElapsed] = useState(0);                 
+      10 +    const [nameInput, setNameInput] = useState('');            
+      11 +    const [joining, setJoining] = useState(false);             
+      12                                                                 
+      13 +    // If already in room (rejoining from navigation), skip    
+         +name input                                                     
+      14 +    const showNameInput = !isInRoom;                           
+      15 +                                                               
+      16 +    async function handleJoin() {                              
+      17 +        if (!roomName || !nameInput.trim()) return;            
+      18 +        setJoining(true);                                      
+      19 +        try {                                                  
+      20 +            await joinRoom(roomName, nameInput.trim());        
+      21 +        } catch {}                                             
+      22 +        setJoining(false);                                     
+      23 +    }                                                          
+      24 +                                                               
+      25      useEffect(() => {                                          
+      26 -        if (roomName && !isInRoom) {                           
+      27 -            joinRoom(roomName).catch(() => {});                
+      28 -        }                                                      
+      26          return () => { leaveRoom(); };                         
+      27 -    }, [roomName]);                                            
+      27 +    }, []);                                                    
+      28                                                                 
+      29      // Live progress bar                                       
+      30      useEffect(() => {                                          
+     ...
+      37      const progress = duration > 0 ? Math.min(elapsed /         
+          duration, 1) : 0;                                              
+      38      const thumbnail = song?.img || (song?.id ?                 
+          `https://i.ytimg.com/vi/${song.id}/mqdefault.jpg` : null);     
+      39                                                                 
+      40 +    // Queue items after current                               
+      41 +    const upNext = roomState ?                                 
+         +roomState.queue.slice((roomState.queueIndex ?? 0) + 1) : [];   
+      42 +                                                               
+      43 +    // --- Name Input Screen ---                               
+      44 +    if (showNameInput) {                                       
+      45 +        return (                                               
+      46 +            <div className="min-h-[100dvh] bg-background       
+         +text-foreground flex flex-col items-center justify-center      
+         +px-6">                                                         
+      47 +                <div className="w-full max-w-sm flex flex-col  
+         +items-center gap-6">                                           
+      48 +                    <div className="flex items-center          
+         +justify-center w-16 h-16 rounded-full bg-[#ff3b6b]/10">        
+      49 +                        <Radio className="h-8 w-8              
+         +text-[#ff3b6b]" />                                             
+      50 +                    </div>                                     
+      51 +                    <div className="text-center">              
+      52 +                        <h1 className="text-2xl                
+         +font-bold">Join Room</h1>                                      
+      53 +                        <p className="text-sm text-white/50    
+         +mt-1">{roomName}</p>                                           
+      54 +                    </div>                                     
+      55 +                                                               
+      56 +                    {error && (                                
+      57 +                        <div className="w-full rounded-xl      
+         +bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm       
+         +text-red-400">                                                 
+      58 +                            {error}                            
+      59 +                        </div>                                 
+      60 +                    )}                                         
+      61 +                                                               
+      62 +                    <div className="w-full space-y-3">         
+      63 +                        <input                                 
+      64 +                            type="text"                        
+      65 +                            placeholder="Your display name"    
+      66 +                            value={nameInput}                  
+      67 +                            onChange={e =>                     
+         +setNameInput(e.target.value)}                                  
+      68 +                            onKeyDown={e => e.key === 'Enter'  
+         +&& handleJoin()}                                               
+      69 +                            className="w-full rounded-xl       
+         +bg-white/[0.05] border border-white/[0.08] px-4 py-3 text-sm   
+         +text-foreground placeholder:text-white/30 focus:outline-none   
+         +focus:border-[#ff3b6b]/40 transition-colors"                   
+      70 +                            autoFocus                          
+      71 +                        />                                     
+      72 +                        <button                                
+      73 +                            onClick={handleJoin}               
+      74 +                            disabled={!nameInput.trim() ||     
+         +joining}                                                       
+      75 +                            className="w-full rounded-xl       
+         +bg-[#ff3b6b] px-4 py-3 text-sm font-semibold text-white        
+         +hover:bg-[#ff3b6b]/90 disabled:opacity-40                      
+         +disabled:cursor-not-allowed active:scale-[0.98] transition-all 
+         + flex items-center justify-center gap-2"                       
+      76 +                        >                                      
+      77 +                            {joining ? <Loader2 className="h-4 
+         + w-4 animate-spin" /> : null}                                  
+      78 +                            {joining ? 'Joining...' : 'Join'}  
+      79 +                        </button>                              
+      80 +                    </div>                                     
+      81 +                </div>                                         
+      82 +            </div>                                             
+      83 +        );                                                     
+      84 +    }                                                          
+      85 +                                                               
+      86 +    // --- Room View ---                                       
+      87      return (                                                   
+      88          <div className="min-h-[100dvh] bg-background           
+          text-foreground flex flex-col">                                
+      89              {/* Background glow */}                            
+     ...
+      51                  </div>                                         
+      52              )}                                                 
+      53                                                                 
+      54 -            <div className="relative z-10 flex-1 flex flex-col 
+         -items-center justify-center px-6 py-8 safe-area-inset">        
+      54 +            <div className="relative z-10 flex-1 flex flex-col 
+         +items-center px-6 py-8 safe-area-inset">                       
+      55                  <div className="w-full max-w-sm flex flex-col  
+          items-center gap-6 md:gap-8">                                  
+      56                                                                 
+      57                      {/* Connection status pill */}             
+     ...
+      71                                  <span className="text-sm       
+          text-white/35">{roomName}</span>                               
+      72                              </>                                
+      73                          )}                                     
+      74 +                        {memberName && (                       
+      75 +                            <>                                 
+      76 +                                <span                          
+         +className="text-white/15">·</span>                             
+      77 +                                <span className="text-sm       
+         +text-white/35">{memberName}</span>                             
+      78 +                            </>                                
+      79 +                        )}                                     
+      80                      </div>                                     
+      81                                                                 
+      82                      {/* Error */}                              
+     ...
+      138                              <span className="text-xs          
+           text-white/35 font-medium">Paused</span>                      
+      139                          </div>                                
+      140                      )}                                        
+      141 +                                                              
+      142 +                    {/* Listeners count */}                   
+      143 +                    {roomState?.listeners &&                  
+          +roomState.listeners.length > 0 && (                           
+      144 +                        <div className="flex items-center     
+          +gap-1.5 text-xs text-white/35">                               
+      145 +                            <Users className="h-3.5 w-3.5" /> 
+      146 +                                                              
+          +<span>{roomState.listeners.length} listening</span>           
+      147 +                        </div>                                
+      148 +                    )}                                        
+      149                  </div>                                        
+      150 +                                                              
+      151 +                {/* Up Next Queue */}                         
+      152 +                {upNext.length > 0 && (                       
+      153 +                    <div className="w-full max-w-sm mt-8">    
+      154 +                        <div className="flex items-center     
+          +gap-2 mb-3">                                                  
+      155 +                            <Music className="h-4 w-4         
+          +text-white/40" />                                             
+      156 +                            <h2 className="text-sm            
+          +font-semibold text-white/60">Up Next</h2>                     
+      157 +                            <span className="text-xs          
+          +text-white/25 ml-auto">{upNext.length} song{upNext.length !== 
+          + 1 ? 's' : ''}</span>                                         
+      158 +                        </div>                                
+      159 +                        <div className="flex flex-col gap-1   
+          +max-h-[40vh] overflow-y-auto overscroll-contain">             
+      160 +                            {upNext.map((item, i) => {        
+      161 +                                const s = item.song;          
+      162 +                                const thumb = s?.img ||       
+          +(s?.id ? `https://i.ytimg.com/vi/${s.id}/mqdefault.jpg` :     
+          +null);                                                        
+      163 +                                return (                      
+      164 +                                    <div                      
+      165 +                                        key={item.queueId ||  
+          +i}                                                            
+      166 +                                        className="flex       
+          +items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03]       
+          +hover:bg-white/[0.05] transition-colors"                      
+      167 +                                    >                         
+      168 +                                        {thumb ? (            
+      169 +                                            <img src={thumb}  
+          +alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" 
+          + />                                                           
+      170 +                                        ) : (                 
+      171 +                                            <div              
+          +className="w-10 h-10 rounded-lg bg-white/[0.06] flex          
+          +items-center justify-center shrink-0">                        
+      172 +                                                <Music        
+          +className="h-4 w-4 text-white/20" />                          
+      173 +                                            </div>            
+      174 +                                        )}                    
+      175 +                                        <div                  
+          +className="min-w-0 flex-1">                                   
+      176 +                                            <p                
+          +className="text-sm font-medium truncate">{s?.title || s?.name 
+          + || 'Unknown'}</p>                                            
+      177 +                                            <p                
+          +className="text-xs text-white/40 truncate">{s?.author || (s   
+          +as any)?.artist?.name || ''}</p>                              
+      178 +                                        </div>                
+      179 +                                    </div>                    
+      180 +                                );                            
+      181 +                            })}                               
+      182 +                        </div>                                
+      183 +                    </div>                                    
+      184 +                )}                                            
+      185              </div>                                            
+      186                                                                
+      187              {/* Footer */}                                    
+
+● Step 5: RoomPanel — add listener count/names for host:
+
+● Update(src/components/listenAlong/RoomPanel.tsx)
+  ⎿  Added 1 line, removed 1 line
+      1 -import { X, Radio, Wifi, WifiOff, Loader2, Copy, Check, LogOut  
+        -} from 'lucide-react';                                          
+      1 +import { X, Radio, Wifi, WifiOff, Loader2, Copy, Check, LogOut, 
+        +Users } from 'lucide-react';                                    
+      2  import { useState } from 'react';                               
+      3  import { QRCodeSVG } from 'qrcode.react';                       
+      4  import { useUIStore } from '@/stores/uiStore';                  
+
+● Add listeners section after QR code in host view:
+
+● Update(src/components/listenAlong/RoomPanel.tsx)
+  ⎿  Added 22 lines
+       87                              </button>                         
+       88                          </div>                                
+       89                      </div>                                    
+       90 +                                                              
+       91 +                    {/* Listeners */}                         
+       92 +                    {roomState?.listeners &&                  
+          +roomState.listeners.length > 0 && (                           
+       93 +                        <div className="w-full space-y-2">    
+       94 +                            <div className="flex items-center 
+          + gap-2">                                                      
+       95 +                                <Users className="h-3.5 w-3.5 
+          + text-white/40" />                                            
+       96 +                                <p className="text-[11px]     
+          +font-medium text-white/35 uppercase tracking-wider">          
+       97 +                                    Listeners                 
+          +({roomState.listeners.length})                                
+       98 +                                </p>                          
+       99 +                            </div>                            
+      100 +                            <div className="flex flex-col     
+          +gap-1">                                                       
+      101 +                                {roomState.listeners.map(l => 
+          + (                                                            
+      102 +                                    <div key={l.id}           
+          +className="flex items-center gap-2 px-3 py-2 rounded-lg       
+          +bg-white/[0.03]">                                             
+      103 +                                        <div className="w-6   
+          +h-6 rounded-full bg-[#ff3b6b]/10 flex items-center            
+          +justify-center text-[10px] font-bold text-[#ff3b6b]">         
+      104 +                                                              
+          +{l.name.charAt(0).toUpperCase()}                              
+      105 +                                        </div>                
+      106 +                                        <span                 
+          +className="text-xs text-white/60 truncate">{l.name}</span>    
+      107 +                                    </div>                    
+      108 +                                ))}                           
+      109 +                            </div>                            
+      110 +                        </div>                                
+      111 +                    )}                                        
+      112                  </div>                                        
+      113              )}                                                
+      114                                                                
+
+● Step 6: Console API — update room.join and add room.listeners:
+
+● Update(src/lib/testing/console-api.ts)
+  ⎿  Added 13 lines, removed 5 lines
+      340          return url;                                           
+      341        }, name);                                               
+      342      },                                                        
+      343 -    async join(name: string) {                                
+      343 +    async join(displayName: string, roomName?: string) {      
+      344        return actAsync('room.join', async () => {              
+      345 -        if (!name) throw new Error('room.join: room           
+          - name is required');                                          
+      346 -        await listenAlong().joinRoom(name);                   
+      347 -        console.log(`%c🎧 Joined room "${name}"`,             
+          -'color:#00ff88;font-weight:bold');                            
+      348 -      }, name);                                               
+      345 +        if (!displayName) throw new Error('room.join: display 
+          + name is required');                                          
+      346 +        const room = roomName || listenAlong().roomName;      
+      347 +        if (!room) throw new Error('room.join: room name is   
+          +required (pass as second argument or navigate to a room       
+          +first)');                                                     
+      348 +        await listenAlong().joinRoom(room, displayName);      
+      349 +        console.log(`%c🎧 Joined room "${room}" as            
+          +"${displayName}"`, 'color:#00ff88;font-weight:bold');         
+      350 +      }, { displayName, roomName });                          
+      351      },                                                        
+      352 +    listeners() {                                             
+      353 +      return act('room.listeners', () => {                    
+      354 +        const state = listenAlong().roomState;                
+      355 +        return state?.listeners || [];                        
+      356 +      });                                                     
+      357 +    },                                                        
+      358      leave() {                                                 
+      359        return act('room.leave', () => {                        
+      360          listenAlong().leaveRoom();                            
+
+● Update the help command to include the new signatures:
+
+● Update(src/lib/testing/console-api.ts)
+  ⎿  Added 1 line, removed 1 line
+      400        'state.player()', 'state.ui()', 'state.search()',       
+           'state.list()',                                               
+      401        'load.album(id)', 'load.artist(id)', 'load.playlist(id, 
+            all?)', 'load.channel(id)',                                  
+      402        'socketit(username, port?)', 'sockmsg(message)',        
+           'sockstop()', 'sockurl()',                                    
+      403 -      'room.create(name)', 'room.join(name                    
+          -)', 'room.leave()', 'room.state()',                           
+      403 +      'room.create(name)', 'room.join(displayName, roomName?  
+          +)', 'room.leave()', 'room.state()', 'room.listeners()',       
+      404        'help()', 'version()',                                  
+      405      ];                                                        
+      406      console.log('%cm14u Console API',                         
+           'font-size:16px;font-weight:bold;color:#ff3b6b');             
+  ⎿  API Error: 400 You have exceeded your daily token limit. You can resume at 
+     2026-04-02 00:00 UTC.

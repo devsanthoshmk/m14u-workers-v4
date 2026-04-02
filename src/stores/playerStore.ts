@@ -236,18 +236,22 @@ export const usePlayerStore = create<PlayerStore>()(
                             throw new Error('No audio streams found');
                         }
 
-                        const stream = await preferredStream(audioStreams, config.quality);
-                        
-                        if (!stream) {
-                            throw new Error('Could not select audio stream');
-                        }
+      const stream = await preferredStream(audioStreams, config.quality);
 
-                        const streamUrl = audioProxyHandler(stream.url);
-                        
-                        // Check if song changed while we were fetching
-                        if (get().currentSong?.id !== song.id) return;
+      if (!stream) {
+        throw new Error('Could not select audio stream');
+      }
 
-                        audio.src = streamUrl;
+      const streamUrl = audioProxyHandler(stream.url);
+      
+      // Log the direct audio link being played
+      console.log(`[yt-dlp] Direct audio URL for "${song.title}": ${streamUrl}`);
+      console.log(`[yt-dlp] Stream details: ${stream.bitrate}bps | ${stream.encoding} | ${stream.type}`);
+
+      // Check if song changed while we were fetching
+      if (get().currentSong?.id !== song.id) return;
+
+      audio.src = streamUrl;
                         audio.volume = state.volume;
                         audio.muted = state.isMuted;
                         
