@@ -26,22 +26,26 @@ export function RoomPage() {
         return () => { leaveRoom(); };
     }, []);
 
-    // Live progress bar
+    // Live progress bar — uses wall-clock songStartWallMs + clockOffset
+    const { clockOffsetMs } = useListenAlongStore();
+
     useEffect(() => {
-        if (!roomState?.isPlaying || !roomState.playbackStartedAt) return;
+        if (!roomState?.isPlaying || !roomState.songStartWallMs) return;
         const interval = setInterval(() => {
-            const now = Date.now() * 1000;
-            setElapsed((now - roomState.playbackStartedAt) / 1_000_000);
+            // songStartWallMs is in host's Date.now() domain
+            // Convert to guest domain: guestMs = hostMs - clockOffsetMs
+            const songStartLocal = roomState.songStartWallMs - clockOffsetMs;
+            const elapsedSec = (Date.now() - songStartLocal) / 1000;
+            setElapsed(Math.max(0, elapsedSec));
         }, 250);
         return () => clearInterval(interval);
-    }, [roomState?.playbackStartedAt, roomState?.isPlaying]);
+    }, [roomState?.songStartWallMs, roomState?.isPlaying, clockOffsetMs]);
 
     useEffect(() => {
         if (roomState && !roomState.isPlaying) {
-            const now = Date.now() * 1000;
-            setElapsed((now - roomState.playbackStartedAt) / 1_000_000);
+            setElapsed(roomState.pausedAtSec || 0);
         }
-    }, [roomState?.isPlaying]);
+    }, [roomState?.isPlaying, roomState?.pausedAtSec]);
 
     const song = roomState?.currentSong;
     const duration = song?.duration ? parseDuration(song.duration) : 0;

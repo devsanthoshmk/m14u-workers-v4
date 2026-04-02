@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { QRCodeSVG } from 'qrcode.react';
 import { useListenAlongStore } from '@/stores/listenAlongStore';
+import { useCustomApiStore } from '@/stores/customApiStore';
 import { useNavigate } from 'react-router-dom';
 
 interface ListenAlongModalProps {
@@ -12,18 +13,20 @@ interface ListenAlongModalProps {
     onOpenChange: (open: boolean) => void;
 }
 
-type Tab = 'create' | 'join';
+type Tab = 'create' | 'join' | 'server';
 
 export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) {
     const isNative = Capacitor.isNativePlatform();
     const [tab, setTab] = useState<Tab>(isNative ? 'create' : 'join');
     const [roomName, setRoomName] = useState('');
+    const [apiCodeInput, setApiCodeInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [createdUrl, setCreatedUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
     const { createRoom, isInRoom, isHost, roomName: activeRoomName, connectionStatus, roomState, leaveRoom } = useListenAlongStore();
+    const { connectCode, disconnect, tunnelUrl, status: apiStatus, error: apiError, apiCode, isHostServer, hostServerCode, startHostServer, stopHostServer } = useCustomApiStore();
     const navigate = useNavigate();
 
     const listeners = roomState?.listeners || [];
@@ -31,6 +34,7 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
 
     const activeRoomLink = activeRoomName ? `https://m14u.pages.dev/room/${activeRoomName}` : '';
     const roomLink = roomName ? `https://m14u.pages.dev/room/${roomName}` : '';
+    const activeServerLink = hostServerCode ? `https://m14u.pages.dev/server/${hostServerCode}` : '';
 
     async function handleCreate() {
         if (!roomName.trim()) return;
@@ -71,7 +75,11 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
     }
 
     function handleCopyLink() {
-        const link = isInRoom ? activeRoomLink : roomLink;
+        let link = '';
+        if (tab === 'server' && isHostServer) link = activeServerLink;
+        else if (isInRoom) link = activeRoomLink;
+        else link = roomLink;
+
         navigator.clipboard.writeText(link).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -153,9 +161,15 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
                                         {/* QR + share link (host) */}
                                         {isHost && (
                                             <div className="flex flex-col items-center gap-4">
-                                                <div className="bg-white p-4 rounded-2xl shadow-lg">
+                                                <a 
+                                                    href={activeRoomLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform block"
+                                                    title="Open room link"
+                                                >
                                                     <QRCodeSVG value={activeRoomLink} size={160} />
-                                                </div>
+                                                </a>
                                                 <div className="text-center w-full space-y-2">
                                                     <p className="text-xs font-medium text-white/40 uppercase tracking-wider">Share this link</p>
                                                     <div className="flex items-center gap-2 bg-white/[0.04] rounded-xl px-4 py-3 border border-white/[0.06]">
@@ -214,31 +228,42 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
                                     </div>
                                 ) : (
                                     <>
-                                        {/* ── Create / Join tabs ── */}
+                                        {/* ── Create / Join / Server tabs ── */}
                                         <div className="flex gap-1 mb-5 bg-white/[0.04] rounded-xl p-1 border border-white/[0.04]">
                                             {isNative && (
                                                 <button
                                                     onClick={() => { setTab('create'); setCreatedUrl(null); setError(null); }}
-                                                    className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-sm font-medium transition-all ${
                                                         tab === 'create'
                                                             ? 'bg-[#ff3b6b] text-white shadow-lg shadow-[#ff3b6b]/20'
                                                             : 'text-white/50 hover:text-white/80 active:bg-white/5'
                                                     }`}
                                                 >
-                                                    <Plus className="h-3.5 w-3.5" />
+                                                    <Plus className="h-3.5 w-3.5 hidden sm:block" />
                                                     Create
                                                 </button>
                                             )}
                                             <button
                                                 onClick={() => { setTab('join'); setCreatedUrl(null); setError(null); }}
-                                                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                                                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-sm font-medium transition-all ${
                                                     tab === 'join'
                                                         ? 'bg-[#ff3b6b] text-white shadow-lg shadow-[#ff3b6b]/20'
                                                         : 'text-white/50 hover:text-white/80 active:bg-white/5'
                                                 }`}
                                             >
-                                                <Users className="h-3.5 w-3.5" />
+                                                <Users className="h-3.5 w-3.5 hidden sm:block" />
                                                 Join
+                                            </button>
+                                            <button
+                                                onClick={() => { setTab('server'); setCreatedUrl(null); setError(null); }}
+                                                className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-sm font-medium transition-all ${
+                                                    tab === 'server'
+                                                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                                                        : 'text-white/50 hover:text-white/80 active:bg-white/5'
+                                                }`}
+                                            >
+                                                <Wifi className="h-3.5 w-3.5 hidden sm:block" />
+                                                Server
                                             </button>
                                         </div>
 
@@ -291,9 +316,15 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
                                                 animate={{ opacity: 1, scale: 1 }}
                                                 className="flex flex-col items-center gap-5"
                                             >
-                                                <div className="bg-white p-4 rounded-2xl shadow-lg">
+                                                <a 
+                                                    href={roomLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform block"
+                                                    title="Open room link"
+                                                >
                                                     <QRCodeSVG value={roomLink} size={160} />
-                                                </div>
+                                                </a>
                                                 <div className="text-center w-full space-y-2">
                                                     <p className="text-xs font-medium text-white/40 uppercase tracking-wider">Share this link</p>
                                                     <div className="flex items-center gap-2 bg-white/[0.04] rounded-xl px-4 py-3 border border-white/[0.06]">
@@ -340,6 +371,130 @@ export function ListenAlongModal({ open, onOpenChange }: ListenAlongModalProps) 
                                                 >
                                                     Join Room
                                                 </button>
+                                            </motion.div>
+                                        )}
+
+                                        {/* Server API */}
+                                        {tab === 'server' && (
+                                            <motion.div
+                                                key="server-form"
+                                                initial={{ opacity: 0, x: 10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                className="flex flex-col gap-3"
+                                            >
+                                                <div className="text-center mb-2 px-2">
+                                                    {isNative ? (
+                                                        <>
+                                                            <p className="text-sm font-medium text-white/80">Host YT-DLP Server</p>
+                                                            <p className="text-xs text-white/40 mt-1">Share your phone's native audio extractor directly with your other devices.</p>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <p className="text-sm font-medium text-white/80">YT-DLP Custom Tunnel</p>
+                                                            <p className="text-xs text-white/40 mt-1">Connect your private yt-dlp API using a cloudflared tunnel code to bypass proxies.</p>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                
+                                                {isNative && isHostServer && hostServerCode ? (
+                                                    <div className="flex flex-col items-center gap-5 mt-2">
+                                                        <a 
+                                                            href={activeServerLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="bg-white p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform block"
+                                                            title="Open server link"
+                                                        >
+                                                            <QRCodeSVG value={activeServerLink} size={160} />
+                                                        </a>
+                                                        <div className="text-center w-full space-y-2">
+                                                            <p className="text-xs font-medium text-white/40 uppercase tracking-wider">Join Server Code: <span className="text-white font-bold">{hostServerCode}</span></p>
+                                                            <div className="flex items-center gap-2 bg-white/[0.04] rounded-xl px-4 py-3 border border-white/[0.06]">
+                                                                <a
+                                                                    href={activeServerLink}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-sm text-blue-400 hover:underline break-all flex-1 min-w-0"
+                                                                >
+                                                                    {activeServerLink}
+                                                                </a>
+                                                                <button
+                                                                    onClick={handleCopyLink}
+                                                                    className="shrink-0 rounded-lg p-2 text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                                                                >
+                                                                    {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={stopHostServer}
+                                                            className="w-full flex items-center justify-center gap-2 rounded-xl bg-red-500/8 border border-red-500/10 px-4 py-3 text-sm font-medium text-red-400 hover:bg-red-500/15 active:scale-[0.98] transition-all mt-2"
+                                                        >
+                                                            <LogOut className="h-4 w-4" />
+                                                            Stop Phone Server
+                                                        </button>
+                                                    </div>
+                                                ) : tunnelUrl && !isHostServer ? (
+                                                    <div className="flex flex-col gap-3">
+                                                        <div className="rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-3 text-sm text-green-400">
+                                                            Connected to API code <span className="font-bold text-white">{apiCode}</span>
+                                                        </div>
+                                                        <div className="text-xs text-white/40 break-all bg-white/[0.04] p-3 rounded-lg border border-white/[0.08]">
+                                                            {tunnelUrl}
+                                                        </div>
+                                                        <button
+                                                            onClick={disconnect}
+                                                            className="w-full rounded-xl bg-white/[0.08] px-4 py-3.5 text-sm font-semibold text-white hover:bg-white/[0.12] active:scale-[0.98] transition-all"
+                                                        >
+                                                            Disconnect
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <AnimatePresence>
+                                                            {apiError && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, height: 0 }}
+                                                                    animate={{ opacity: 1, height: 'auto' }}
+                                                                    exit={{ opacity: 0, height: 0 }}
+                                                                    className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400 mb-1"
+                                                                >
+                                                                    {apiError}
+                                                                </motion.div>
+                                                            )}
+                                                        </AnimatePresence>
+                                                        {isNative ? (
+                                                            <button
+                                                                onClick={startHostServer}
+                                                                disabled={apiStatus === 'connecting'}
+                                                                className="w-full rounded-xl bg-blue-500 px-4 py-3.5 text-sm font-semibold text-white disabled:opacity-40 flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-2"
+                                                            >
+                                                                {apiStatus === 'connecting' && <Loader2 className="h-4 w-4 animate-spin" />}
+                                                                {apiStatus === 'connecting' ? 'Starting Server...' : 'Start Phone Server'}
+                                                            </button>
+                                                        ) : (
+                                                            <>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Enter 4-digit code"
+                                                                    value={apiCodeInput}
+                                                                    onChange={e => setApiCodeInput(e.target.value)}
+                                                                    onKeyDown={e => e.key === 'Enter' && connectCode(apiCodeInput)}
+                                                                    className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-3.5 text-sm text-foreground placeholder:text-white/25 outline-none focus:border-[#ff3b6b]/50 focus:ring-1 focus:ring-[#ff3b6b]/20 transition-all font-mono tracking-widest text-center text-lg"
+                                                                    maxLength={8}
+                                                                />
+                                                                <button
+                                                                    onClick={() => connectCode(apiCodeInput)}
+                                                                    disabled={apiStatus === 'connecting' || !apiCodeInput.trim()}
+                                                                    className="w-full rounded-xl bg-blue-500 px-4 py-3.5 text-sm font-semibold text-white disabled:opacity-40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
+                                                                >
+                                                                    {apiStatus === 'connecting' && <Loader2 className="h-4 w-4 animate-spin" />}
+                                                                    {apiStatus === 'connecting' ? 'Connecting...' : 'Connect Server'}
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
                                             </motion.div>
                                         )}
                                     </>

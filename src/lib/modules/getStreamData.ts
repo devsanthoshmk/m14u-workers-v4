@@ -2,6 +2,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { AudioStream } from '@/types/music';
 import { isNative } from '@/lib/utils/platform';
 import StreamExtractor from '@/plugins/StreamExtractor';
+import { useCustomApiStore } from '@/stores/customApiStore';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -81,6 +82,31 @@ export default async function getStreamData(
 
     return data;
   };
+
+  const customTunnel = useCustomApiStore.getState().tunnelUrl;
+  if (customTunnel) {
+    try {
+      // First try Invidious format API endpoint if the user hosted an Invidious clone
+      let res = await fetch(`${customTunnel}/api/v1/videos/${id}?fields=adaptiveFormats,title`, { signal });
+      if (!res.ok) {
+         // Fallback to a basic yt-dlp wrapper if they made a simple one
+         res = await fetch(`${customTunnel}/stream?id=${id}`, { signal });
+      }
+      if (res.ok) {
+        const data = await res.json();
+        // Standardize output if the user's API just returns a flat { url: "..." }
+        if (data.url && !data.adaptiveFormats) {
+          data.adaptiveFormats = [{ url: data.url, type: 'audio/mp4', bitrate: '128000', encoding: 'aac' }];
+        }
+        if (data.adaptiveFormats && data.adaptiveFormats.length > 0) {
+          streamCache.set(id, { data, timestamp: Date.now() });
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn("Custom YT-DLP tunnel failed, falling back to proxies...", e);
+    }
+  }
 
   const state = usePlayerStore.getState();
   const proxy = state.proxy || instances[0];

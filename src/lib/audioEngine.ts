@@ -36,6 +36,21 @@ const REFINE_INTERVAL = 2000;  // Re-refine every 2 seconds during playback
 let _refineTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
+ * Lazily create/return the AudioContext. Only called from user-gesture
+ * code paths (resumeContext, getOutputLatencyMs) so it satisfies
+ * Chrome's autoplay policy.
+ */
+function _getOrCreateCtx(): AudioContext | null {
+  if (_ctx) return _ctx;
+  try {
+    _ctx = new AudioContext();
+  } catch (err) {
+    console.warn('[AudioEngine] Could not create AudioContext:', err);
+  }
+  return _ctx;
+}
+
+/**
  * Initialize the audio engine. Call once with the app's HTMLAudioElement.
  */
 export function initAudioEngine(audio: HTMLAudioElement): void {
@@ -43,12 +58,8 @@ export function initAudioEngine(audio: HTMLAudioElement): void {
 
   _audioElement = audio;
 
-  // AudioContext just for outputLatency measurement
-  try {
-    _ctx = new AudioContext();
-  } catch (err) {
-    console.warn('[AudioEngine] Could not create AudioContext:', err);
-  }
+  // NOTE: AudioContext is NOT created here — it will be lazily created
+  // inside resumeContext() which is called from user-gesture code paths.
 
   // `playing` fires when audio actually starts rendering after buffering
   // — NOT when play() is called
@@ -179,8 +190,9 @@ export function resetStartDetection(): void {
  * Resume the AudioContext (for outputLatency accuracy on Chrome).
  */
 export async function resumeContext(): Promise<void> {
-  if (_ctx && _ctx.state === 'suspended') {
-    await _ctx.resume();
+  const ctx = _getOrCreateCtx();
+  if (ctx && ctx.state === 'suspended') {
+    await ctx.resume();
   }
 }
 
@@ -230,6 +242,7 @@ export function onPlaybackOriginReady(cb: (originMicros: number) => void): () =>
  * Get the audio output latency in milliseconds.
  */
 export function getOutputLatencyMs(): number {
-  if (!_ctx) return 0;
-  return ((_ctx.baseLatency || 0) + (_ctx.outputLatency || 0)) * 1000;
+  const ctx = _getOrCreateCtx();
+  if (!ctx) return 0;
+  return ((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000;
 }

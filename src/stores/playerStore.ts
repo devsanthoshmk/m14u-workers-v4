@@ -35,7 +35,8 @@ interface ShareablePlayerState {
     repeatMode: RepeatMode;
     isShuffled: boolean;
     timestamp: number;
-    playbackOriginMicros: number;
+    /** Wall-clock ms (Date.now) when position 0:00 was at speakers */
+    songStartWallMs: number;
 }
 
 interface FavoriteItem {
@@ -76,6 +77,9 @@ interface PlayerStore {
     // Favorites & History
     favorites: FavoriteItem[];
     listeningHistory: ListeningHistoryItem [];
+
+    // Listen-Along control
+    isListenAlongGuest: boolean;
 
     // Player actions
     playSong: (song: TrackItem) => Promise<void>;
@@ -205,6 +209,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 originalQueue: [],
                 favorites: [],
                 listeningHistory: [],
+                isListenAlongGuest: false,
 
                 // === Playback Actions ===
 
@@ -546,7 +551,14 @@ export const usePlayerStore = create<PlayerStore>()(
                 _setError: (error: string | null) => set({ error }),
 
                 _onTrackEnded: () => {
-                    const { repeatMode } = get();
+                    const { repeatMode, isListenAlongGuest } = get();
+                    
+                    // If we are a guest in a room, we do NOT auto-advance. 
+                    // We wait for the host's state update to tell us what plays next.
+                    if (isListenAlongGuest) {
+                        return;
+                    }
+
                     if (repeatMode === 'one' && get().currentSong) {
                         audioEngine.resetStartDetection();
                         audio.currentTime = 0;
@@ -556,20 +568,25 @@ export const usePlayerStore = create<PlayerStore>()(
                     }
                 },
 
-                // === Listen-Along (disabled) ===
+                // === Listen-Along ===
 
                 exportState: (): ShareablePlayerState => {
                     const s = get();
+                    // Compute wall-clock origin: Date.now() - currentTimeSec * 1000
+                    // This is the Date.now() timestamp of when position 0:00 was at speakers
+                    const songStartWallMs = s.currentSong
+                        ? Date.now() - (audio.currentTime || 0) * 1000
+                        : 0;
                     return {
                         currentSong: s.currentSong,
                         queue: s.queue,
                         queueIndex: s.queueIndex,
-                        currentTime: s.currentTime,
+                        currentTime: audio.currentTime || 0,
                         isPlaying: s.isPlaying,
                         repeatMode: s.repeatMode,
                         isShuffled: s.isShuffled,
                         timestamp: Date.now(),
-                        playbackOriginMicros: s.playbackOriginMicros,
+                        songStartWallMs,
                     };
                 },
 

@@ -41,13 +41,13 @@ Once the port is known, `cloudflaredjs` starts a Quick Tunnel (`cloudflared tunn
 The tunnel URL is published to:
 
 ```
-https://m14u.sanpro.workers.dev/?key=m14u&value=<tunnel_url>
+https://m14u.pages.dev/?key=m14u&value=<tunnel_url>
 ```
 
 Any service can read the current tunnel URL with:
 
 ```
-GET https://m14u.sanpro.workers.dev/?key=m14u
+GET https://m14u.pages.dev/?key=m14u
 ```
 
 This means frontends, mobile apps, or other dev tools can always find the latest tunnel URL without manual copy-pasting.

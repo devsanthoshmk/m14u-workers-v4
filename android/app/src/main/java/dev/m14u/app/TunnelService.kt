@@ -700,6 +700,18 @@ class TunnelService : Service() {
                         socket.getOutputStream().flush()
                     } catch (_: Exception) {}
                     Log.d("RoomHttpServer", "Sent pong response")
+                } else if (event == "time_sync") {
+                    // Reply immediately with System.currentTimeMillis() as hostTime.
+                    // This is equivalent to Date.now() in the WebView — both use the system clock.
+                    val t0 = json.optLong("t0", 0L)
+                    val hostTime = System.currentTimeMillis()
+                    val reply = "{\"event\":\"time_sync_reply\",\"t0\":$t0,\"hostTime\":$hostTime}"
+                    val frame = buildFrame(0x1, reply.toByteArray(StandardCharsets.UTF_8))
+                    try {
+                        socket.getOutputStream().write(frame)
+                        socket.getOutputStream().flush()
+                    } catch (_: Exception) {}
+                    Log.d("RoomHttpServer", "time_sync reply: t0=$t0 hostTime=$hostTime")
                 } else if (event == "join") {
                     val clientId = json.optString("clientId", "")
                     val memberName = json.optString("memberName", "")

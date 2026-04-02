@@ -2,11 +2,35 @@ import { create } from 'zustand';
 import { Capacitor } from '@capacitor/core';
 import DevTunnel from '@/plugins/DevTunnel';
 import { usePlayerStore } from '@/stores/playerStore';
-import * as audioEngine from '@/lib/audioEngine';
+import { getPlaybackOriginMicros, resumeContext } from '@/lib/audioEngine';
 import type { RoomState, ConnectionStatus } from '@/types/listenAlong';
 
 const KV_BASE = 'https://m14u.sanpro.workers.dev/';
 
+// ─── Sync thresholds ────────────────────────────────────────────
+const DRIFT_THRESHOLD_SEC  = 0.5;   // Seek if guest drifts more than 500ms
+const CLOCK_SYNC_SAMPLES   = 3;     // 3 samples (fast with high-RTT tunnels)
+const CLOCK_SYNC_INTERVAL  = 20000; // Re-sync clocks every 20s
+const STALL_GRACE_MS       = 400;   // Ignore sub-400ms rebuffers
+
+// ─── Diagnostic logging ─────────────────────────────────────────
+const LOG_STYLE = 'color:#00e5ff;font-weight:bold';
+const LOG_WARN  = 'color:#ffab00;font-weight:bold';
+
+function logSync(msg: string, data?: Record<string, unknown>) {
+    if (data) {
+        console.log(`%c[ListenAlong] ${msg}`, LOG_STYLE, '\n', JSON.stringify(data, null, 2));
+    } else {
+        console.log(`%c[ListenAlong] ${msg}`, LOG_STYLE);
+    }
+}
+function logWarn(msg: string, data?: Record<string, unknown>) {
+    if (data) {
+        console.warn(`%c[ListenAlong] ${msg}`, LOG_WARN, '\n', JSON.stringify(data, null, 2));
+    } else {
+        console.warn(`%c[ListenAlong] ${msg}`, LOG_WARN);
+    }
+}
 
 interface ListenAlongState {
     isInRoom: boolean;
@@ -18,6 +42,8 @@ interface ListenAlongState {
     error: string | null;
     clientId: string | null;
     memberName: string | null;
+    /** Guest's clock offset: hostSystemTime ≈ guestDateNow + clockOffsetMs */
+    clockOffsetMs: number;
     createRoom: (roomName: string) => Promise<string>;
     joinRoom: (roomName: string, name?: string) => Promise<void>;
     leaveRoom: () => void;
@@ -30,6 +56,19 @@ let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _tunnelLogListener: any = null;
 let _tunnelPanicListener: any = null;
 
+// ─── Clock sync state ───────────────────────────────────────────
+let _clockSyncTimer: ReturnType<typeof setInterval> | null = null;
+let _clockSyncSamples: { offset: number; rtt: number }[] = [];
+let _clockSyncCount = 0; // How many successful syncs we've done
+
+// ─── Stall detection state ──────────────────────────────────────
+let _wasWaiting = false;
+let _waitingStartedAt = 0;
+
+// ─── Last room state for deferred sync ──────────────────────────
+let _lastRoomState: RoomState | null = null;
+let _lastSyncLog = 0;
+let _pendingSyncAfterClockSync = false;
 
 
 function sendWsMessage(message: object) {
@@ -54,6 +93,190 @@ function stopWsPing() {
     }
 }
 
+// ─── Clock offset measurement ───────────────────────────────────
+
+function initiateClockSync() {
+    _clockSyncSamples = [];
+    logSync('⏱ Starting clock sync...');
+    sendSingleTimeSyncPing();
+}
+
+function sendSingleTimeSyncPing() {
+    sendWsMessage({ event: 'time_sync', t0: Date.now() });
+}
+
+function handleTimeSyncReply(msg: { t0: number; hostTime: number }) {
+    const guestNow = Date.now();
+    const rtt = guestNow - msg.t0;
+    const offset = msg.hostTime - (msg.t0 + rtt / 2);
+    _clockSyncSamples.push({ offset, rtt });
+
+    logSync(`  ⏱ Sample ${_clockSyncSamples.length}/${CLOCK_SYNC_SAMPLES}`, {
+        t0: msg.t0,
+        hostTime: msg.hostTime,
+        guestNow,
+        rtt_ms: rtt,
+        offset_ms: round(offset),
+    });
+
+    if (_clockSyncSamples.length < CLOCK_SYNC_SAMPLES) {
+        setTimeout(sendSingleTimeSyncPing, 60);
+    } else {
+        // Sort by RTT, use best (lowest RTT) samples
+        const sorted = [..._clockSyncSamples].sort((a, b) => a.rtt - b.rtt);
+        const best = sorted.slice(0, Math.min(2, sorted.length));
+        const offsets = best.map(s => s.offset).sort((a, b) => a - b);
+        const medianOffset = offsets[Math.floor(offsets.length / 2)];
+
+        _clockSyncCount++;
+
+        logSync('⏱ Clock sync complete', {
+            syncNumber: _clockSyncCount,
+            medianOffset_ms: round(medianOffset),
+            bestSample_rtt: sorted[0].rtt,
+            allSamples: _clockSyncSamples.map(s => ({
+                offset: round(s.offset), rtt: s.rtt,
+            })),
+        });
+
+        useListenAlongStore.setState({ clockOffsetMs: medianOffset });
+
+        // If we skipped a sync earlier because clock wasn't ready, do it now
+        if (_pendingSyncAfterClockSync && _lastRoomState) {
+            _pendingSyncAfterClockSync = false;
+            logSync('🔄 Executing deferred sync after clock sync completed');
+            syncGuestPosition(_lastRoomState);
+        }
+    }
+}
+
+function startPeriodicClockSync() {
+    stopPeriodicClockSync();
+    _clockSyncTimer = setInterval(() => {
+        const state = useListenAlongStore.getState();
+        if (!state.isHost && state.connectionStatus === 'connected') {
+            initiateClockSync();
+        }
+    }, CLOCK_SYNC_INTERVAL);
+}
+
+function stopPeriodicClockSync() {
+    if (_clockSyncTimer) {
+        clearInterval(_clockSyncTimer);
+        _clockSyncTimer = null;
+    }
+}
+
+
+// ─── Stall detection & recovery ─────────────────────────────────
+
+function setupStallDetection() {
+    const audio = getAudioElement();
+    if (!audio) return;
+
+    audio.removeEventListener('waiting', _onAudioWaiting);
+    audio.removeEventListener('playing', _onAudioPlaying);
+
+    audio.addEventListener('waiting', _onAudioWaiting);
+    audio.addEventListener('playing', _onAudioPlaying);
+}
+
+function teardownStallDetection() {
+    const audio = getAudioElement();
+    if (!audio) return;
+    audio.removeEventListener('waiting', _onAudioWaiting);
+    audio.removeEventListener('playing', _onAudioPlaying);
+    _wasWaiting = false;
+}
+
+function _onAudioWaiting() {
+    _wasWaiting = true;
+    _waitingStartedAt = Date.now();
+    logSync('⏸ Audio stalled (waiting event)');
+}
+
+function _onAudioPlaying() {
+    if (!_wasWaiting) return;
+    _wasWaiting = false;
+
+    const stallDuration = Date.now() - _waitingStartedAt;
+    logSync(`▶ Audio resumed after stall (${stallDuration}ms)`);
+
+    if (stallDuration < STALL_GRACE_MS) return;
+
+    const state = useListenAlongStore.getState();
+    if (!state.isHost && _lastRoomState?.isPlaying) {
+        logSync('🔄 Re-syncing after rebuffer...');
+        syncGuestPosition(_lastRoomState);
+    }
+}
+
+function getAudioElement(): HTMLAudioElement | null {
+    const store = usePlayerStore.getState() as any;
+    return store._audio || null;
+}
+
+// ─── Guest sync engine ──────────────────────────────────────────
+
+function computeExpectedPositionSec(roomState: RoomState): number {
+    if (!roomState.isPlaying) {
+        return roomState.pausedAtSec || 0;
+    }
+    const guestNowMs = Date.now();
+    const { clockOffsetMs } = useListenAlongStore.getState();
+    const songStartInGuestMs = roomState.songStartWallMs - clockOffsetMs;
+    const elapsedSec = (guestNowMs - songStartInGuestMs) / 1000;
+    return Math.max(0, elapsedSec);
+}
+
+function syncGuestPosition(roomState: RoomState) {
+    const player = usePlayerStore.getState();
+    const audio = getAudioElement();
+    if (!audio || !roomState.isPlaying) return;
+
+    const { clockOffsetMs } = useListenAlongStore.getState();
+
+    // Note: if clock sync hasn't completed yet, clockOffsetMs is 0 (best guess).
+    // Clock sync will refine it, and periodic drift checks will correct.
+
+    const guestNowMs = Date.now();
+    const songStartInGuestMs = roomState.songStartWallMs - clockOffsetMs;
+    const expectedSec = Math.max(0, (guestNowMs - songStartInGuestMs) / 1000);
+    const actualSec = audio.currentTime;
+    const driftSec = actualSec - expectedSec;
+    const absDrift = Math.abs(driftSec);
+
+    // Log drift check (throttled to every 2s unless seeking)
+    const now = Date.now();
+    if (now - _lastSyncLog > 2000 || absDrift > DRIFT_THRESHOLD_SEC) {
+        _lastSyncLog = now;
+        logSync(`🎯 Drift check`, {
+            actual_sec: round(actualSec),
+            expected_sec: round(expectedSec),
+            drift_sec: round(driftSec),
+            drift_direction: driftSec > 0 ? 'GUEST AHEAD' : 'GUEST BEHIND',
+            will_seek: absDrift > DRIFT_THRESHOLD_SEC,
+            clockOffset_ms: round(clockOffsetMs),
+            syncCount: _clockSyncCount,
+            host_songStartWallMs: roomState.songStartWallMs,
+            songStart_guestDomain: round(songStartInGuestMs),
+            guest_now_ms: guestNowMs,
+        });
+    }
+
+    if (absDrift > DRIFT_THRESHOLD_SEC) {
+        logSync(`🔀 SEEKING: ${round(actualSec)}s → ${round(expectedSec)}s (drift: ${round(driftSec)}s)`);
+        player.seek(Math.max(0, expectedSec));
+    }
+}
+
+function round(n: number): number {
+    return Math.round(n * 1000) / 1000;
+}
+
+
+// ─── WebSocket connection ───────────────────────────────────────
+
 function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
     if (_ws) {
         _ws.close();
@@ -65,7 +288,7 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
     }
 
     const wsUrl = tunnelUrl.replace(/^http/, 'ws') + '/ws';
-    console.log('[ListenAlong WS] Connecting to:', wsUrl);
+    logSync(`🔌 Connecting to: ${wsUrl}`);
 
     try {
         _ws = new WebSocket(wsUrl);
@@ -75,7 +298,7 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
     }
 
     _ws.onopen = () => {
-        console.log('[ListenAlong WS] Connected');
+        logSync('✅ WebSocket connected');
         _reconnectAttempt = 0;
         useListenAlongStore.setState({ connectionStatus: 'connected', error: null });
         startWsPing();
@@ -83,15 +306,40 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
         const state = useListenAlongStore.getState();
         if (!state.isHost && state.clientId) {
             sendWsMessage({ event: 'join', clientId: state.clientId, memberName: state.memberName });
+
+            // NOTE: We do NOT reset _clockSyncCount here — if we have a previous
+            // offset from this session, it's still valid enough to use.
+            // The periodic sync will refine it.
+            logSync(`🔌 Reconnect state: clockSyncCount=${_clockSyncCount}, storedOffset=${state.clockOffsetMs}`);
+
+            initiateClockSync();
+            startPeriodicClockSync();
+            setupStallDetection();
         }
     };
 
     _ws.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
-            if (msg.event === 'pong') {
-                // Silently handle pong
-            } else if (msg.event === 'join') {
+
+            if (msg.event === 'pong') return;
+
+            // Host responds to time_sync (fallback if native doesn't handle it)
+            if (msg.event === 'time_sync') {
+                sendWsMessage({
+                    event: 'time_sync_reply',
+                    t0: msg.t0,
+                    hostTime: Date.now(),
+                });
+                return;
+            }
+
+            if (msg.event === 'time_sync_reply') {
+                handleTimeSyncReply(msg);
+                return;
+            }
+
+            if (msg.event === 'join') {
                 const currentStore = useListenAlongStore.getState();
                 if (currentStore.isHost && currentStore.roomState) {
                     const existingListeners = currentStore.roomState.listeners || [];
@@ -102,7 +350,10 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
                         pushStateToTunnel(currentStore.roomName!);
                     }
                 }
-            } else if (msg.event === 'leave') {
+                return;
+            }
+
+            if (msg.event === 'leave') {
                 const currentStore = useListenAlongStore.getState();
                 if (currentStore.isHost && currentStore.roomState) {
                     const existingListeners = currentStore.roomState.listeners || [];
@@ -113,115 +364,25 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
                         pushStateToTunnel(currentStore.roomName!);
                     }
                 }
-            } else if (msg.roomName) {
+                return;
+            }
+
+            // Room state update (guest receives)
+            if (msg.roomName) {
                 const currentState = useListenAlongStore.getState();
                 if (!currentState.isHost) {
-                    useListenAlongStore.setState({ roomState: msg });
-                    
-                    const player = usePlayerStore.getState();
-                    const hostOriginMicros: number = msg.playbackStartedAt || 0;
-                        
-                    if (player.currentSong?.id !== msg.currentSong?.id) {
-                        // === NEW SONG: play and compensate for startup delay ===
-                        usePlayerStore.setState({ 
-                            queue: msg.queue,
-                            queueIndex: msg.queueIndex
-                        });
-                        if (msg.currentSong) {
-                            if (!msg.isPlaying) {
-                                // Host is paused — just load the song at the right position
-                                const pausedAt = hostOriginMicros > 0
-                                    ? Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000)
-                                    : 0;
-                                player.playSong(msg.currentSong).then(() => {
-                                    const p2 = usePlayerStore.getState();
-                                    p2.pause();
-                                    p2.seek(pausedAt);
-                                });
-                            } else {
-                                // Host is playing — play, wait for actual start, then compensate
-                                player.playSong(msg.currentSong).then(async () => {
-                                    const p2 = usePlayerStore.getState();
-                                    try {
-                                        await p2.play();
-                                    } catch { /* autoplay may be blocked */ }
-
-                                    try {
-                                        // Wait for the multi-sample origin detection
-                                        const guestOriginMicros = await audioEngine.waitForPlaybackOrigin();
-                                        
-                                        // How far behind is the guest vs the host?
-                                        // hostOriginMicros = wall-clock μs when host's 0:00 was at speakers
-                                        // guestOriginMicros = wall-clock μs when guest's 0:00 was at speakers
-                                        // drift = guest started later → guest is behind by (guestOrigin - hostOrigin) μs
-                                        const driftMicros = guestOriginMicros - hostOriginMicros;
-                                        const driftSec = driftMicros / 1_000_000;
-
-                                        if (driftSec > 0.1) {
-                                            // Seek forward by the drift amount to catch up with host
-                                            const targetPosition = p2.currentTime + driftSec;
-                                            console.log(
-                                                `[ListenAlong] Guest sync: drift=${driftSec.toFixed(3)}s, ` +
-                                                `seeking to ${targetPosition.toFixed(3)}s`
-                                            );
-                                            p2.seek(targetPosition);
-                                        } else {
-                                            console.log(`[ListenAlong] Guest sync: drift=${driftSec.toFixed(3)}s (within tolerance)`);
-                                        }
-                                    } catch (err) {
-                                        // Fallback: use old estimation method
-                                        console.warn('[ListenAlong] Origin detection failed, using fallback sync:', err);
-                                        const fallbackTime = hostOriginMicros > 0
-                                            ? Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000)
-                                            : 0;
-                                        p2.seek(fallbackTime);
-                                    }
-                                });
-                            }
-                        } else {
-                            player.clearQueue();
-                        }
-                    } else {
-                        // === SAME SONG: sync play state and correct drift ===
-                        if (player.isPlaying !== msg.isPlaying) {
-                            if (msg.isPlaying) player.play().catch(() => {});
-                            else player.pause();
-                        }
-                        
-                        // Check position drift using precise origins
-                        if (msg.isPlaying && hostOriginMicros > 0) {
-                            const guestOriginMicros = audioEngine.getPlaybackOriginMicros();
-                            if (guestOriginMicros > 0) {
-                                const driftSec = (guestOriginMicros - hostOriginMicros) / 1_000_000;
-                                // If guest is more than 1 second behind/ahead, correct
-                                if (Math.abs(driftSec) > 1) {
-                                    const targetPosition = player.currentTime + driftSec;
-                                    console.log(
-                                        `[ListenAlong] Drift correction: ${driftSec.toFixed(3)}s, ` +
-                                        `seeking to ${targetPosition.toFixed(3)}s`
-                                    );
-                                    player.seek(Math.max(0, targetPosition));
-                                }
-                            } else {
-                                // Fallback: use estimated time comparison
-                                const expectedTime = Math.max(0, (performance.now() * 1000 - hostOriginMicros) / 1_000_000);
-                                const timeDiff = Math.abs(player.currentTime - expectedTime);
-                                if (timeDiff > 2) {
-                                    player.seek(expectedTime);
-                                }
-                            }
-                        }
-                    }
+                    handleGuestStateUpdate(msg as RoomState);
                 }
             }
         } catch (err) {
-            console.error('[ListenAlong WS] MSg parse error:', err);
+            console.error('[ListenAlong WS] Msg parse error:', err);
         }
     };
 
     _ws.onclose = () => {
-        console.log('[ListenAlong WS] Closed');
+        logSync('❌ WebSocket closed');
         stopWsPing();
+        stopPeriodicClockSync();
         
         _reconnectAttempt++;
         const delay = Math.min(1000 * Math.pow(2, _reconnectAttempt - 1), 30000);
@@ -234,16 +395,16 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
                 const currentState = useListenAlongStore.getState();
                 if (currentState.roomName) {
                     try {
-                        console.log('[ListenAlong WS] Checking KV for updated tunnel URL...');
+                        logSync('🔍 Checking KV for updated tunnel URL...');
                         const latestUrl = await fetchKvUrl(currentState.roomName);
                         if (latestUrl && latestUrl !== tunnelUrl) {
-                            console.log('[ListenAlong WS] Discovered new tunnel URL from KV:', latestUrl);
+                            logSync(`🔄 New tunnel URL from KV: ${latestUrl}`);
                             nextUrl = latestUrl;
                             useListenAlongStore.setState({ tunnelUrl: latestUrl });
-                            _reconnectAttempt = 1; // Reset backoff since we found a new valid endpoint
+                            _reconnectAttempt = 1;
                         }
                     } catch (e) {
-                        console.warn('[ListenAlong WS] Failed to check KV for updated URL:', e);
+                        logWarn('Failed to check KV for updated URL');
                     }
                 }
             }
@@ -254,15 +415,160 @@ function connectWebSocket(tunnelUrl: string, isHost: boolean = false) {
 }
 
 
+// ─── Guest state handler ────────────────────────────────────────
+
+function handleGuestStateUpdate(msg: RoomState) {
+    _lastRoomState = msg; // Always track latest state for deferred sync
+    useListenAlongStore.setState({ roomState: msg });
+
+    const player = usePlayerStore.getState();
+    const audio = getAudioElement();
+    const songChanged = player.currentSong?.id !== msg.currentSong?.id;
+    const { clockOffsetMs } = useListenAlongStore.getState();
+
+    logSync('📨 Received room state', {
+        songId: msg.currentSong?.id,
+        songTitle: msg.currentSong?.title?.substring(0, 40),
+        isPlaying: msg.isPlaying,
+        songStartWallMs: msg.songStartWallMs,
+        pausedAtSec: msg.pausedAtSec,
+        songChanged,
+        currentGuestSongId: player.currentSong?.id,
+        guestAudioTime: audio ? round(audio.currentTime) : null,
+        clockSyncCount: _clockSyncCount,
+        clockOffsetMs: round(clockOffsetMs),
+    });
+
+    if (songChanged) {
+        // ═══ NEW SONG ═══
+        logSync('🎵 Song changed, loading new track...');
+        usePlayerStore.setState({
+            queue: msg.queue,
+            queueIndex: msg.queueIndex,
+        });
+
+        if (!msg.currentSong) {
+            player.clearQueue();
+            return;
+        }
+
+        if (!msg.isPlaying) {
+            player.playSong(msg.currentSong).then(() => {
+                const p2 = usePlayerStore.getState();
+                p2.pause();
+                p2.seek(msg.pausedAtSec || 0);
+                logSync(`⏸ Loaded paused song at ${msg.pausedAtSec || 0}s`);
+            });
+            return;
+        }
+
+        // Host is playing — play, then seek after actual playback starts
+        const capturedMsg = { ...msg }; // Capture for closure
+        player.playSong(msg.currentSong).then(async () => {
+            const p2 = usePlayerStore.getState();
+            await audioEngine.resumeContext();
+            p2.play().catch(() => { /* autoplay blocked */ });
+
+            const audioEl = getAudioElement();
+            if (!audioEl) return;
+
+            const onActualPlay = () => {
+                audioEl.removeEventListener('playing', onActualPlay);
+                
+                // Recompute expected position NOW (not from closure capture time)
+                const latestRoomState = _lastRoomState || capturedMsg;
+                const expectedSec = computeExpectedPositionSec(latestRoomState);
+                const actualSec = audioEl.currentTime;
+
+                logSync('🎵 New song: audio actually started playing', {
+                    audioCurrentTime: round(actualSec),
+                    expectedPosition: round(expectedSec),
+                    willSeek: expectedSec > 0.3,
+                    clockSyncCount: _clockSyncCount,
+                    clockOffset: round(useListenAlongStore.getState().clockOffsetMs),
+                });
+
+                if (expectedSec > 0.3) {
+                    p2.seek(expectedSec);
+                    logSync(`🔀 New song seek: → ${round(expectedSec)}s`);
+                }
+            };
+
+            if (!audioEl.paused && audioEl.currentTime > 0) {
+                onActualPlay();
+            } else {
+                audioEl.addEventListener('playing', onActualPlay);
+            }
+        });
+    } else {
+        // ═══ SAME SONG — sync play/pause and drift ═══
+
+        if (player.isPlaying !== msg.isPlaying) {
+            if (msg.isPlaying) {
+                logSync('▶ Host resumed, resuming guest...');
+                player.play().catch(() => {});
+
+                // Wait for audio to actually resume (not setTimeout which fires during buffering)
+                const audioEl = getAudioElement();
+                if (audioEl) {
+                    const onResumed = () => {
+                        audioEl.removeEventListener('playing', onResumed);
+                        logSync('▶ Audio actually resumed, syncing position...');
+                        if (_lastRoomState?.isPlaying) {
+                            syncGuestPosition(_lastRoomState);
+                        }
+                    };
+                    if (!audioEl.paused && audioEl.currentTime > 0) {
+                        onResumed();
+                    } else {
+                        audioEl.addEventListener('playing', onResumed);
+                    }
+                }
+            } else {
+                logSync(`⏸ Host paused at ${msg.pausedAtSec}s`);
+                player.pause();
+                player.seek(msg.pausedAtSec || 0);
+            }
+            return;
+        }
+
+        // Continuous drift correction
+        if (msg.isPlaying && msg.songStartWallMs > 0) {
+            syncGuestPosition(msg);
+        }
+    }
+}
+
+
+// ─── Host state builder ─────────────────────────────────────────
+
 function buildRoomState(roomName: string): RoomState {
     const p = usePlayerStore.getState();
+    const audio = getAudioElement();
+    const currentTimeSec = audio ? audio.currentTime : (p.currentTime || 0);
+
+    let songStartWallMs = 0;
+    if (p.currentSong) {
+        const originMicros = getPlaybackOriginMicros();
+        if (originMicros > 0) {
+            // High-precision: convert the performance.now() origin to Date.now() wall clock
+            // This eliminates audio.currentTime jitter
+            const perfToWallOffset = Date.now() - performance.now();
+            songStartWallMs = (originMicros / 1000) + perfToWallOffset;
+        } else {
+            // Fallback while AudioEngine is computing origin
+            songStartWallMs = Date.now() - currentTimeSec * 1000;
+        }
+    }
+
     return {
         roomName,
         currentSong: p.currentSong,
         queue: p.queue,
         queueIndex: p.queueIndex,
         isPlaying: p.isPlaying,
-        playbackStartedAt: p.playbackOriginMicros || (Date.now() * 1000 - (p.currentTime || 0) * 1_000_000),
+        songStartWallMs,
+        pausedAtSec: p.isPlaying ? 0 : currentTimeSec,
         timestamp: Date.now(),
         listeners: [],
     };
@@ -286,21 +592,37 @@ function pushStateToTunnel(roomName: string) {
 
     if (!Capacitor.isNativePlatform()) return;
 
+    // Minimal debounce — just to batch rapid state flickers
     if (_pushTimer) clearTimeout(_pushTimer);
     _pushTimer = setTimeout(() => {
         DevTunnel.updateRoomState({ state: json }).catch(() => {});
-    }, 500);
+    }, 100);
 }
 
-async function fetchKvUrl(roomName: string): Promise<string> {
-    const res = await fetch(`${KV_BASE}?key=${encodeURIComponent(roomName)}`);
-    if (!res.ok) throw new Error(`KV lookup failed: ${res.status}`);
-    const url = await res.text();
-    if (!url || !url.startsWith('http')) throw new Error('No tunnel URL found for this room');
-    return url.trim();
+async function fetchKvUrl(roomName: string, retries = 10, delayMs = 1500): Promise<string> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(`${KV_BASE}?key=${encodeURIComponent(roomName)}`);
+            if (!res.ok) {
+                if (res.status === 404 && i < retries - 1) {
+                    await new Promise(r => setTimeout(r, delayMs));
+                    continue;
+                }
+                throw new Error(`KV lookup failed: ${res.status}`);
+            }
+            const url = await res.text();
+            if (!url || !url.startsWith('http')) throw new Error('No tunnel URL found for this room');
+            return url.trim();
+        } catch (e: any) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+    throw new Error('KV lookup failed: Timeout');
 }
 
 
+// ─── Tunnel logging ─────────────────────────────────────────────
 
 async function attachTunnelLogging() {
     _tunnelLogListener?.remove?.();
@@ -341,12 +663,20 @@ function cleanupAll() {
         _ws = null;
     }
     stopWsPing();
+    stopPeriodicClockSync();
+    teardownStallDetection();
+    _clockSyncCount = 0;
+    _lastRoomState = null;
+    _pendingSyncAfterClockSync = false;
     
     _tunnelLogListener?.remove?.();
     _tunnelLogListener = null;
     _tunnelPanicListener?.remove?.();
     _tunnelPanicListener = null;
 }
+
+
+// ─── Store ──────────────────────────────────────────────────────
 
 export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
     isInRoom: false,
@@ -358,6 +688,7 @@ export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
     error: null,
     clientId: null,
     memberName: null,
+    clockOffsetMs: 0,
 
     createRoom: async (roomName: string) => {
         if (!Capacitor.isNativePlatform()) {
@@ -368,17 +699,17 @@ export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
 
         try {
             await attachTunnelLogging();
-            console.log('[ListenAlong] Starting tunnel for room:', roomName);
+            logSync(`Starting tunnel for room: ${roomName}`);
 
             const { url } = await DevTunnel.startTunnel({ username: roomName, port: 8080 });
-            console.log('[ListenAlong] Tunnel URL received:', url);
+            logSync(`Tunnel URL received: ${url}`);
 
             set({
                 isInRoom: true,
                 isHost: true,
                 roomName,
                 tunnelUrl: url,
-                connectionStatus: 'connected', // Tunnel is running, so host is connected natively
+                connectionStatus: 'connected',
             });
 
             pushStateToTunnel(roomName);
@@ -396,16 +727,15 @@ export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
         set({ connectionStatus: 'connecting', error: null, roomName });
 
         try {
-            console.log('[ListenAlong] Looking up tunnel URL from KV for room:', roomName);
+            logSync(`Looking up tunnel URL from KV for room: ${roomName}`);
             const tunnelUrl = await fetchKvUrl(roomName);
-            console.log('[ListenAlong] Tunnel URL from KV:', tunnelUrl);
+            logSync(`Tunnel URL from KV: ${tunnelUrl}`);
 
             const clientId = crypto.randomUUID();
             const memberName = name || 'Anonymous';
 
-            set({ clientId, memberName });
-
             set({ clientId, memberName, isInRoom: true, isHost: false, tunnelUrl, connectionStatus: 'connecting' });
+            usePlayerStore.setState({ isListenAlongGuest: true });
             connectWebSocket(tunnelUrl);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -423,6 +753,8 @@ export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
             DevTunnel.stopTunnel().catch(() => {});
         }
 
+        usePlayerStore.setState({ isListenAlongGuest: false });
+
         set({
             isInRoom: false,
             isHost: false,
@@ -433,10 +765,12 @@ export const useListenAlongStore = create<ListenAlongState>((set, get) => ({
             error: null,
             clientId: null,
             memberName: null,
+            clockOffsetMs: 0,
         });
     },
 }));
 
+// ─── Host auto-push on player state change ──────────────────────
 usePlayerStore.subscribe(() => {
     const { isHost, roomName } = useListenAlongStore.getState();
     if (isHost && roomName) {
