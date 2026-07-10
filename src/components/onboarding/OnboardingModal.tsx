@@ -51,20 +51,19 @@ export function OnboardingModal() {
                         </div>
                         <h1 className="text-2xl font-bold font-heading text-foreground">Welcome to M14U</h1>
                         <p className="text-sm text-muted-foreground mt-4 max-w-sm">
-                            This is a sample site which uses the open-source Invidious YT client. 
-                            I respect those projects, so please do not use this as a daily driver. 
+                            This is a sample site which uses the open-source Invidious YT client.
+                            I respect those projects, so please do not use this as a daily driver.
                             Instead, use the mobile app which has all the features listed in my resume repo:
                         </p>
-                        <a 
-                            href="https://github.com/santhoshmk/resume" 
-                            target="_blank" 
+                        <a
+                            href="https://github.com/devsanthoshmk/m14u-workers-v4"
+                            target="_blank"
                             rel="noopener noreferrer"
                             className="mt-3 text-primary hover:underline font-medium text-sm"
                         >
-                            github.com/santhoshmk/resume
+                            github.com/devsanthoshmk/m14u-workers-v4
                         </a>
                         <p className="text-xs text-muted-foreground mt-4">
-                            (Or check the GitHub Actions tab of this repository for the latest APK build)
                         </p>
                     </div>
 
