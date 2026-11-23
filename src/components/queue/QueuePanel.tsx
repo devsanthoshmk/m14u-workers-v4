@@ -34,7 +34,7 @@ import type { QueueItem } from '@/types/player';
 
 const iconButton = 'inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 
-export function QueuePanel({ fullPage = false }: { fullPage?: boolean }) {
+export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: boolean; embedded?: boolean }) {
     const navigate = useNavigate();
     const queue = usePlayerStore(s => s.queue);
     const queueIndex = usePlayerStore(s => s.queueIndex);
@@ -84,9 +84,9 @@ export function QueuePanel({ fullPage = false }: { fullPage?: boolean }) {
     return (
         <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
             {/* Header */}
-            <header className={cn('flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3', fullPage && 'sm:px-6 sm:py-5')}>
+            <header className={cn('flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3', fullPage && 'sm:px-6 sm:py-5', embedded && 'border-white/[0.06] px-4 py-3')}>
                 <div className="flex min-w-0 items-center gap-2">
-                    {fullPage && (
+                    {fullPage && !embedded && (
                         <button
                             onClick={handleClose}
                             aria-label="Go back"
@@ -96,7 +96,7 @@ export function QueuePanel({ fullPage = false }: { fullPage?: boolean }) {
                         </button>
                     )}
                     <div className="min-w-0">
-                        {fullPage ? <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">Queue</h1> : <h2 className="font-heading text-lg font-bold tracking-tight">Queue</h2>}
+                        {fullPage ? <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">Queue</h1> : <h2 className="font-heading text-base font-bold tracking-tight">Queue</h2>}
                         <p className="text-xs text-muted-foreground">{queue.length} {queue.length === 1 ? 'track' : 'tracks'}</p>
                     </div>
                 </div>
@@ -111,7 +111,7 @@ export function QueuePanel({ fullPage = false }: { fullPage?: boolean }) {
                             <Trash2 className="size-4" aria-hidden="true" />
                         </button>
                     )}
-                    {!fullPage && <button
+                    {!fullPage && !embedded && <button
                         onClick={handleClose}
                         aria-label="Close queue"
                         className={iconButton}
@@ -187,6 +187,7 @@ function QueueSectionHeading({ fullPage, children }: { fullPage: boolean; childr
 function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: QueueItem; isCurrent?: boolean; isPlayed?: boolean }) {
     const playFromQueue = usePlayerStore(s => s.playFromQueue);
     const removeFromQueue = usePlayerStore(s => s.removeFromQueue);
+    const queueLength = usePlayerStore(s => s.queue.length);
     const queue = usePlayerStore(s => s.queue);
 
     const index = queue.findIndex(q => q.queueId === item.queueId);
@@ -222,14 +223,14 @@ function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: Que
                         <Play className="size-4" fill="currentColor" aria-hidden="true" />
                     </button>
                 )}
-                <button
+                {(!isCurrent || queueLength === 1) && <button
                     onClick={(e) => { e.stopPropagation(); removeFromQueue(item.queueId); }}
                     aria-label={`Remove ${title} from queue`}
                     title="Remove from queue"
                     className={iconButton}
                 >
                     <X className="size-4" aria-hidden="true" />
-                </button>
+                </button>}
             </div>
         </div>
     );
