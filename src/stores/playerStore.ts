@@ -10,7 +10,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { TrackItem, AudioStream, Invidious } from '@/types/music';
-import { audioProxyHandler, preferredStream } from '@/lib/utils/helpers';
+import { proxyHandler, preferredStream } from '@/lib/utils/helpers';
 import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
@@ -126,6 +126,7 @@ export const usePlayerStore = create<PlayerStore>()(
     persist(
         (set, get) => {
             const audio = new Audio();
+            let playbackAttempt: AbortController | undefined;
             
             // Initialize audio event listeners
             audio.addEventListener('timeupdate', () => {
@@ -200,6 +201,12 @@ export const usePlayerStore = create<PlayerStore>()(
 
                 playSong: async (song: TrackItem) => {
                     const state = get();
+                    playbackAttempt?.abort();
+                    const attempt = new AbortController();
+                    playbackAttempt = attempt;
+                    audio.pause();
+                    audio.removeAttribute('src');
+                    audio.load();
 
                     // Add current song's listening time to history before switching
                     if (state.currentSong && state.currentTime > 5) {
@@ -212,12 +219,14 @@ export const usePlayerStore = create<PlayerStore>()(
                         isPlaying: false,
                         error: null,
                         currentTime: 0,
+                        duration: 0,
+                        streamData: null,
                         status: 'Loading stream...'
                     });
 
                     try {
                         // Fetch stream data from Invidious proxy
-                        const data = await getStreamData(song.id);
+                        const data = await getStreamData(song.id, false, attempt.signal);
                         
                         if ('error' in data) {
                             throw new Error(String(data.message) || 'Failed to fetch stream');
@@ -229,7 +238,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
                         // Filter to audio streams and select best one
                         const audioStreams = data.adaptiveFormats.filter(
-                            (s: AudioStream) => s.type.startsWith('audio/')
+                            (s: AudioStream) => s?.type?.startsWith('audio/') && s.url
                         );
                         
                         if (!audioStreams.length) {
@@ -242,16 +251,27 @@ export const usePlayerStore = create<PlayerStore>()(
                             throw new Error('Could not select audio stream');
                         }
 
-                        const streamUrl = audioProxyHandler(stream.url);
+                        const streamUrl = proxyHandler(stream.url, data.streamProxy || '');
                         
                         // Check if song changed while we were fetching
-                        if (get().currentSong?.id !== song.id) return;
+                        if (attempt.signal.aborted) return;
 
                         audio.src = streamUrl;
                         audio.volume = state.volume;
                         audio.muted = state.isMuted;
                         
-                        await audio.play();
+                        let timer: ReturnType<typeof setTimeout> | undefined;
+                        try {
+                            await Promise.race([
+                                audio.play(),
+                                new Promise<never>((_, reject) => {
+                                    timer = setTimeout(() => reject(new Error('Audio took too long to start')), 12000);
+                                })
+                            ]);
+                        } finally {
+                            clearTimeout(timer);
+                        }
+                        if (attempt.signal.aborted) return;
                         
                         set({ 
                             streamData: data,
@@ -260,19 +280,25 @@ export const usePlayerStore = create<PlayerStore>()(
                         });
 
                         // Prefetch next song
-                        setTimeout(() => prefetchNextSong(), 2000);
+                        prefetchNextSong();
                     } catch (err) {
+                        if (attempt.signal.aborted) return;
+                        audio.pause();
+                        audio.removeAttribute('src');
+                        audio.load();
                         set({
                             error: err instanceof Error ? err.message : 'Failed to load song',
                             isBuffering: false,
+                            isPlaying: false,
                             status: ''
                         });
                     }
                 },
 
                 togglePlay: async () => {
-                    const { currentSong, audio } = get();
-                    if (!currentSong) return;
+                    const { currentSong, audio, isBuffering } = get();
+                    if (!currentSong || isBuffering) return;
+                    if (!audio.getAttribute('src')) return get().playSong(currentSong);
                     
                     if (audio.paused) {
                         await audio.play();
