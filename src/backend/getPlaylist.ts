@@ -1,5 +1,5 @@
 import { YTNodes, type Helpers } from 'youtubei.js';
-import { getClient, getThumbnail, formatDuration, getThumbnailId } from './utils.js';
+import { getClient, getThumbnail, formatDuration } from './utils.js';
 import type { YTPlaylistItem, YTItem } from '@/types/music';
 
 export default async function(id: string, all?: boolean): Promise<YTPlaylistItem> {

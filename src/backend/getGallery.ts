@@ -1,5 +1,5 @@
 import { Helpers, YTNodes, type Innertube } from 'youtubei.js';
-import { getClient, getThumbnail, getThumbnailId } from './utils.js';
+import { getClient, getThumbnail } from './utils.js';
 import type { YTListItem } from '@/types/music';
 
 async function fetchFullArtistData(yt: Innertube, id: string) {

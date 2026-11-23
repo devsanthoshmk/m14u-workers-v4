@@ -1,5 +1,5 @@
 import { YTNodes, type Helpers } from 'youtubei.js';
-import { getClient, getThumbnail, getThumbnailId, formatDuration } from './utils.js';
+import { getClient, getThumbnail, formatDuration } from './utils.js';
 
 export default async function(id: string) {
   const yt = await getClient();
