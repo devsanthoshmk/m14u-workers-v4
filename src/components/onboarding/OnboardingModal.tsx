@@ -1,24 +1,10 @@
-/**
- * OnboardingModal — First-visit language selection.
- * Psychology: Asking preferences upfront personalizes the experience immediately.
- * Users who see content in their language on first load are 3x more likely to return.
- */
-
 import { motion, AnimatePresence } from 'framer-motion';
 import { Music2, ChevronRight } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
-import { LOCALE_OPTIONS } from '@/utils/constants';
 
 export function OnboardingModal() {
-    const setUserLocale = useUIStore(s => s.setUserLocale);
     const setOnboardingDone = useUIStore(s => s.setOnboardingDone);
 
-    const handleContinue = () => {
-        const browserLang = navigator.language?.split('-')[0] || 'en';
-        const detected = LOCALE_OPTIONS.find(o => o.value.startsWith(browserLang));
-        setUserLocale(detected?.value || 'english');
-        setOnboardingDone();
-    };
 
     return (
         <AnimatePresence>
@@ -56,7 +42,7 @@ export function OnboardingModal() {
                     {/* Actions */}
                     <div className="space-y-2">
                         <button
-                            onClick={handleContinue}
+                            onClick={setOnboardingDone}
                             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all"
                         >
                             Continue to M14U
