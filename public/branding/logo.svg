@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="right" x1=".25" y1="0" x2=".8" y2="1">
+      <stop stop-color="#ffaf29"/>
+      <stop offset=".52" stop-color="#ffa611"/>
+      <stop offset=".54" stop-color="#d56b04"/>
+      <stop offset="1" stop-color="#f48909"/>
+    </linearGradient>
+    <linearGradient id="fold" x1=".27" y1="0" x2=".73" y2="1">
+      <stop stop-color="#ffad12"/>
+      <stop offset="1" stop-color="#df6d06"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop stop-color="#ac5c14" stop-opacity=".65"/>
+      <stop offset="1" stop-color="#171317" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#f79925" stop-opacity="0"/>
+      <stop offset=".7" stop-color="#f79925"/>
+      <stop offset="1" stop-color="#f79925" stop-opacity=".15"/>
+    </linearGradient>
+    <path id="top" d="M0 160C85 59 173 113 239 0H0Z"/>
+    <path id="bottom" d="M189 512C261 438 310 448 359 440 427 430 456 373 512 356V512Z"/>
+    <clipPath id="top-clip"><use href="#top"/></clipPath>
+    <clipPath id="bottom-clip"><use href="#bottom"/></clipPath>
+  </defs>
+  <path fill="#111014" d="M0 0H512V512H0Z"/>
+  <path fill="#0d0c10" d="M0 340C85 234 154 250 239 296S394 412 512 323V512H0Z"/>
+  <g clip-path="url(#top-clip)">
+    <use href="#top" fill="#181419"/>
+    <ellipse cx="211" cy="40" rx="116" ry="57" fill="url(#glow)" transform="rotate(-31 211 40)"/>
+  </g>
+  <g clip-path="url(#bottom-clip)">
+    <use href="#bottom" fill="#171317"/>
+    <ellipse cx="425" cy="418" rx="132" ry="43" fill="url(#glow)" transform="rotate(-28 425 418)"/>
+  </g>
+  <path fill="none" stroke="url(#edge)" d="M0 160C85 59 173 113 239 0M189 512C261 438 310 448 359 440 427 430 456 373 512 356"/>
+  <path fill="url(#right)" d="M255 196 330 140C344 130 362 138 362 156V271C362 287 348 297 329 303 317 307 307 302 307 288V230L277 251Z"/>
+  <path fill="url(#fold)" d="M184 304C162 295 150 285 150 269V156C150 138 168 130 183 140L294 216Q303 223 307 230L280 250Q271 256 262 250L204 210C195 203 184 207 184 219Z"/>
+  <path fill="#ffa41a" d="M207 238Q207 232 213 235L241 254Q246 257 241 261L213 279Q207 283 207 276Z"/>
+  <path fill="#fffaf3" d="M130 321H142L169 348 196 321H208V376H195V341L173 363Q169 367 165 363L143 341V376H130ZM318 321H331V352Q331 364 343 364H356Q368 364 368 352V321H381V352Q381 376 357 376H342Q318 376 318 352Z"/>
+  <path fill="#ffa41a" fill-rule="evenodd" d="M217 333 233 321H243V376H231V334L217 343ZM289 321H302V355H310V365H302V376H290V365H251V355ZM290 335 268 355H290Z"/>
+</svg>
