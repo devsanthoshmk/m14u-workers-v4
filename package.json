@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test:ui": "node --test scripts/ui-regressions.test.mjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "android:build": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "android:update": "bash scripts/android-update.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
