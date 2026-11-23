@@ -16,9 +16,11 @@ import { cn } from '@/lib/utils';
 import {
     DndContext,
     closestCenter,
+    pointerWithin,
     KeyboardSensor,
-    PointerSensor,
+    MouseSensor,
     TouchSensor,
+    useDroppable,
     useSensor,
     useSensors,
 } from '@dnd-kit/core';
@@ -29,10 +31,11 @@ import {
     useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { DragEndEvent } from '@dnd-kit/core';
+import type { CollisionDetection, DragEndEvent } from '@dnd-kit/core';
 import type { QueueItem } from '@/types/player';
 
 const iconButton = 'inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
+const nowPlayingDropId = 'now-playing-drop';
 
 export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: boolean; embedded?: boolean }) {
     const navigate = useNavigate();
@@ -57,17 +60,40 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
     }, [queueIndex]);
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
         useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
+
+    const detectCollision: CollisionDetection = (args) => {
+        const section = args.active.data.current?.section;
+        if (section === 'played' && args.pointerCoordinates) {
+            const hit = pointerWithin({
+                ...args,
+                droppableContainers: args.droppableContainers.filter(({ id }) => id === nowPlayingDropId),
+            });
+            if (hit.length) return hit;
+        }
+        return closestCenter({
+            ...args,
+            droppableContainers: args.droppableContainers.filter(({ data, id }) => (
+                data.current?.section === section || (!args.pointerCoordinates && section === 'played' && id === nowPlayingDropId)
+            )),
+        });
+    };
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id) return;
 
-        const oldIndex = queue.findIndex(q => q.queueId === active.id);
-        const newIndex = queue.findIndex(q => q.queueId === over.id);
+        const { queue: latestQueue, queueIndex: currentIndex, playFromQueue } = usePlayerStore.getState();
+        const oldIndex = latestQueue.findIndex(q => q.queueId === active.id);
+        if (over.id === nowPlayingDropId) {
+            if (oldIndex >= 0 && oldIndex < currentIndex) void playFromQueue(oldIndex);
+            return;
+        }
+
+        const newIndex = latestQueue.findIndex(q => q.queueId === over.id);
         if (oldIndex !== -1 && newIndex !== -1) {
             reorderQueue(oldIndex, newIndex);
         }
@@ -75,10 +101,14 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
 
     const handleClose = () => {
         setQueueOpen(false);
-        if (fullPage) {
-            if (window.history.state?.idx > 0) navigate(-1);
-            else navigate('/', { replace: true });
-        }
+    };
+
+    const handleBack = () => {
+        handleClose();
+        // Use the same history entry as the browser or Android Back button.
+        // A direct visit has no previous in-app entry to return to.
+        if (window.history.state?.idx > 0) navigate(-1);
+        else navigate('/', { replace: true });
     };
 
     return (
@@ -88,9 +118,10 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                 <div className="flex min-w-0 items-center gap-2">
                     {fullPage && !embedded && (
                         <button
-                            onClick={handleClose}
+                            type="button"
+                            onClick={handleBack}
                             aria-label="Go back"
-                            className={cn(iconButton, 'md:hidden')}
+                            className={cn(iconButton, 'size-11')}
                         >
                             <ChevronLeft className="size-5" aria-hidden="true" />
                         </button>
@@ -133,14 +164,16 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                          </Link>
                     </div>
                 ) : (
-                    <>
+                    <DndContext sensors={sensors} collisionDetection={detectCollision} onDragEnd={handleDragEnd}>
                         {/* Previously Played */}
                         {playedItems.length > 0 && (
                             <div className="pt-3 pb-2">
                                 <QueueSectionHeading fullPage={fullPage}>Played ({playedItems.length})</QueueSectionHeading>
-                                {playedItems.map((item) => (
-                                    <QueueItemRow key={item.queueId} item={item} isPlayed />
-                                ))}
+                                <SortableContext items={playedItems.map(q => q.queueId)} strategy={verticalListSortingStrategy}>
+                                    {playedItems.map((item) => (
+                                        <SortableQueueItem key={item.queueId} item={item} isPlayed />
+                                    ))}
+                                </SortableContext>
                             </div>
                         )}
 
@@ -148,7 +181,7 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                         {currentItem && (
                             <div className="pt-3 pb-2" ref={nowPlayingRef}>
                                 <QueueSectionHeading fullPage={fullPage}>Now playing</QueueSectionHeading>
-                                <QueueItemRow item={currentItem} isCurrent />
+                                <NowPlayingDropTarget item={currentItem} />
                             </div>
                         )}
 
@@ -156,23 +189,17 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                         {upcomingItems.length > 0 && (
                             <div className="pt-2">
                                 <QueueSectionHeading fullPage={fullPage}>Up next ({upcomingItems.length})</QueueSectionHeading>
-                                <DndContext
-                                    sensors={sensors}
-                                    collisionDetection={closestCenter}
-                                    onDragEnd={handleDragEnd}
+                                <SortableContext
+                                    items={upcomingItems.map(q => q.queueId)}
+                                    strategy={verticalListSortingStrategy}
                                 >
-                                    <SortableContext
-                                        items={upcomingItems.map(q => q.queueId)}
-                                        strategy={verticalListSortingStrategy}
-                                    >
-                                        {upcomingItems.map((item) => (
-                                            <SortableQueueItem key={item.queueId} item={item} />
-                                        ))}
-                                    </SortableContext>
-                                </DndContext>
+                                    {upcomingItems.map((item) => (
+                                        <SortableQueueItem key={item.queueId} item={item} />
+                                    ))}
+                                </SortableContext>
                             </div>
                         )}
-                    </>
+                    </DndContext>
                 )}
             </div>
         </div>
@@ -236,9 +263,21 @@ function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: Que
     );
 }
 
-function SortableQueueItem({ item }: { item: QueueItem }) {
+function NowPlayingDropTarget({ item }: { item: QueueItem }) {
+    const { setNodeRef, isOver, active } = useDroppable({ id: nowPlayingDropId });
+    const canDrop = active?.data.current?.section === 'played';
+
+    return (
+        <div ref={setNodeRef} className={cn('rounded-lg', canDrop && 'ring-1 ring-primary/40', isOver && canDrop && 'bg-primary/20 ring-2 ring-primary')}>
+            <QueueItemRow item={item} isCurrent />
+        </div>
+    );
+}
+
+function SortableQueueItem({ item, isPlayed = false }: { item: QueueItem; isPlayed?: boolean }) {
     const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
         id: item.queueId,
+        data: { section: isPlayed ? 'played' : 'upcoming' },
     });
     const song = item.song;
 
@@ -256,12 +295,12 @@ function SortableQueueItem({ item }: { item: QueueItem }) {
                 ref={setActivatorNodeRef}
                 aria-label={`Reorder ${song.name || song.title || 'track'}`}
                 title="Reorder track"
-                className={cn(iconButton, 'w-8 cursor-grab touch-none active:cursor-grabbing')}
+                className={cn(iconButton, 'size-11 cursor-grab touch-none active:cursor-grabbing')}
             >
                 <GripVertical className="size-4" aria-hidden="true" />
             </button>
             <div className="min-w-0 flex-1">
-                <QueueItemRow item={item} />
+                <QueueItemRow item={item} isPlayed={isPlayed} />
             </div>
         </div>
     );
