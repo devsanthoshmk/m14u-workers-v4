@@ -6,7 +6,6 @@
 import { usePlayerStore } from '@/stores/playerStore';
 import { SongRow } from '@/components/song/SongRow';
 import { Heart, Play, Shuffle } from 'lucide-react';
-import { motion } from 'framer-motion';
 import type { TrackItem } from '@/types/music';
 
 export function FavoritesPage() {
@@ -29,61 +28,56 @@ export function FavoritesPage() {
     };
 
     return (
-        <div className="pb-8">
+        <div className="mx-auto w-full min-w-0 max-w-4xl px-3 pb-8 sm:px-6">
             {/* Header */}
-            <div className="px-4 md:px-8 py-6">
-                <div className="flex items-center gap-4">
-                    <div className="flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10">
-                        <Heart className="h-8 w-8 md:h-10 md:w-10 text-primary fill-primary/50" />
+            <header className="border-b border-border py-5 sm:py-6">
+                <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:size-16">
+                        <Heart className="size-6 text-primary sm:size-8" aria-hidden="true" />
                     </div>
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-bold font-heading">Favorites</h1>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {favorites.length} {favorites.length === 1 ? 'song' : 'songs'}
+                        <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">Favorites</h1>
+                        <p className="text-sm text-muted-foreground">
+                            {favorites.length} {favorites.length === 1 ? 'track' : 'tracks'}
                         </p>
                     </div>
                 </div>
 
                 {/* Actions */}
                 {favorites.length > 0 && (
-                    <div className="flex items-center gap-3 mt-4">
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
                         <button
                             onClick={() => playAll(0)}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-primary-foreground font-semibold hover:bg-primary/90 active:scale-[0.97] transition-all"
+                            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                         >
-                            <Play className="h-4 w-4" fill="currentColor" />
+                            <Play className="size-4" fill="currentColor" aria-hidden="true" />
                             Play all
                         </button>
                         <button
                             onClick={shufflePlay}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-surface hover:bg-surface-hover text-foreground font-medium transition-all"
+                            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-surface px-4 text-sm font-medium text-foreground hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                         >
-                            <Shuffle className="h-4 w-4" />
+                            <Shuffle className="size-4" aria-hidden="true" />
                             Shuffle
                         </button>
                     </div>
                 )}
-            </div>
+            </header>
 
             {/* Songs list */}
-            <div className="px-4 md:px-8">
+            <div className="pt-4">
                 {favorites.length === 0 ? (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="flex flex-col items-center justify-center py-20 text-center"
-                    >
-                        <Heart className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                        <p className="text-base font-medium text-foreground">No favorites yet</p>
-                        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                            Tap the heart icon on any song to add it to your favorites
+                    <div className="rounded-xl bg-surface p-4 sm:p-5">
+                        <h2 className="font-heading text-sm font-semibold text-foreground">No favorites yet</h2>
+                        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                            Select the heart on a song to save it here.
                         </p>
-                    </motion.div>
+                    </div>
                 ) : (
                     <div className="space-y-0.5">
                         {songs.map((song, i) => (
                             <SongRow
-                                key={`fav-${(song as any).videoId || song.id}-${i}`}
+                                key={`fav-${song.videoId || song.id}-${i}`}
                                 song={song}
                                 index={i}
                                 showIndex
