@@ -59,7 +59,8 @@ export function AppShell() {
     const onboardingDone = useUIStore(s => s.onboardingDone);
     const currentSong = usePlayerStore(s => s.currentSong);
 
-    const showRightPanel = (isQueueOpen || isLyricsOpen) && !!currentSong;
+    const isNowPlaying = location.pathname === '/now-playing';
+    const showRightPanel = !isNowPlaying && (isQueueOpen || isLyricsOpen) && !!currentSong;
     const isKeepAliveRoute = ['/', '/search', '/favorites'].includes(location.pathname);
 
     const rightPanelKey = isQueueOpen ? 'queue' : 'lyrics';
@@ -76,7 +77,7 @@ export function AppShell() {
                     </div>
 
                     {/* Main content area */}
-                    <main className="flex-1 overflow-hidden relative">
+                    <main className="relative min-w-0 flex-1 overflow-hidden">
                         <KeepAliveRoute path="/">
                             <HomePage />
                         </KeepAliveRoute>

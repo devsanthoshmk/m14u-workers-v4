@@ -63,11 +63,11 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
     return (
         <div
             className={cn(
-                'group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all hover:bg-surface-hover',
+                'group flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-surface-hover sm:gap-3 sm:px-3',
                 isCurrentSong && 'bg-primary/5'
             )}
-            onClick={handlePlay}
         >
+            <button type="button" onClick={handlePlay} aria-label={`Play ${songTitle}`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-2 focus-visible:outline-offset-2 sm:gap-3">
             {/* Index / play icon */}
             {showIndex && (
                 <div className="w-6 text-center text-sm text-muted-foreground">
@@ -105,15 +105,19 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                     {songAlbum && ` · ${songAlbum}`}
                 </p>
             </div>
+            </button>
 
             {/* Favorite button */}
             <button
+                type="button"
+                aria-label={`Favorite ${songTitle}`}
+                aria-pressed={isFavorite}
                 onClick={(e) => {
                     e.stopPropagation();
                     toggleFavorite(song as TrackItem);
                 }}
                 className={cn(
-                    'p-1.5 rounded-full transition-all opacity-0 group-hover:opacity-100',
+                    'grid size-10 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface focus-visible:outline-2 sm:size-11',
                     isFavorite && 'opacity-100 text-primary'
                 )}
             >
@@ -128,11 +132,14 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
             {/* More menu */}
             <div className="relative" ref={menuRef}>
                 <button
+                    type="button"
+                    aria-label={`More actions for ${songTitle}`}
+                    aria-expanded={showMenu}
                     onClick={(e) => {
                         e.stopPropagation();
                         setShowMenu(!showMenu);
                     }}
-                    className="p-1.5 rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                    className="grid size-10 place-items-center rounded-full text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:outline-2 sm:size-11"
                 >
                     <MoreHorizontal className="h-4 w-4" />
                 </button>

@@ -12,7 +12,7 @@ import { useUIStore } from '@/stores/uiStore';
 const NAV_ITEMS = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/search', icon: Search, label: 'Search' },
-    { to: '/favorites', icon: Heart, label: 'Library' },
+    { to: '/favorites', icon: Heart, label: 'Favorites' },
     { to: '/queue', icon: ListMusic, label: 'Queue' },
 ] as const;
 
