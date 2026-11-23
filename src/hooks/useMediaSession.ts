@@ -8,6 +8,7 @@
 
 import { useEffect } from 'react';
 import { usePlayerStore } from '@/stores/playerStore';
+import { isAndroid } from '@/lib/utils/platform';
 
 
 export function useMediaSession(): void {
@@ -18,7 +19,12 @@ export function useMediaSession(): void {
 
     // Update metadata when song changes
     useEffect(() => {
-        if (!('mediaSession' in navigator) || !currentSong) return;
+        if (isAndroid() || !('mediaSession' in navigator)) return;
+        if (!currentSong) {
+            navigator.mediaSession.metadata = null;
+            return;
+        }
+        if (typeof MediaMetadata === 'undefined') return;
 
         // Handle both TrackItem and legacy Song
         const songTitle = (currentSong as any).name || currentSong.title || '';
@@ -40,15 +46,19 @@ export function useMediaSession(): void {
 
     // Update playback state
     useEffect(() => {
-        if (!('mediaSession' in navigator)) return;
-        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-    }, [isPlaying]);
+        if (isAndroid() || !('mediaSession' in navigator)) return;
+        navigator.mediaSession.playbackState = !currentSong ? 'none' : isPlaying ? 'playing' : 'paused';
+    }, [currentSong, isPlaying]);
 
     // Update position state
     useEffect(() => {
-        if (!('mediaSession' in navigator) || !duration) return;
+        if (isAndroid() || !('mediaSession' in navigator)) return;
 
         try {
+            if (!Number.isFinite(duration) || duration <= 0) {
+                navigator.mediaSession.setPositionState();
+                return;
+            }
             navigator.mediaSession.setPositionState({
                 duration: duration,
                 playbackRate: 1,
@@ -61,12 +71,12 @@ export function useMediaSession(): void {
 
     // Register action handlers
     useEffect(() => {
-        if (!('mediaSession' in navigator)) return;
+        if (isAndroid() || !('mediaSession' in navigator)) return;
         const store = usePlayerStore.getState;
 
         const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-            ['play', () => store().togglePlay()],
-            ['pause', () => store().togglePlay()],
+            ['play', () => void store().resume()],
+            ['pause', () => store().pause()],
             ['nexttrack', () => store().next()],
             ['previoustrack', () => store().previous()],
             ['seekto', (details) => {
