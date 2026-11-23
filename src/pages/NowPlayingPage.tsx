@@ -40,7 +40,7 @@ import {
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSleepTimer } from '@/hooks/useSleepTimer';
-import { getThumbnail, formatDuration } from '@/utils/format';
+import { formatDuration } from '@/utils/format';
 import { ProgressBar } from '@/components/player/ProgressBar';
 import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -86,6 +86,7 @@ export function NowPlayingPage() {
     const [copied, setCopied] = useState(false);
     const [shareMessage, setShareMessage] = useState('');
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [artworkFallback, setArtworkFallback] = useState({ key: '', index: 0 });
 
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -140,8 +141,29 @@ export function NowPlayingPage() {
     const title = (currentSong as any)?.name || currentSong?.title || 'Untitled track';
     const artist = (currentSong as any)?.artist?.name || (currentSong as any)?.author || 'Unknown artist';
     const album = (currentSong as any)?.album?.name;
-    const art = (currentSong?.thumbnails && getThumbnail(currentSong.thumbnails, 800)) || (currentSong as any)?.img
-        || (songId ? `https://i.ytimg.com/vi/${songId}/hqdefault.jpg` : '');
+    const thumbnails = [...(currentSong?.thumbnails ?? [])].sort((a, b) => b.width - a.width);
+    const suppliedArt = thumbnails[0]?.url || (currentSong as any)?.img;
+    // YouTube Music often supplies square covers with a small CDN size preset.
+    const fullSizeCover = suppliedArt?.replace(
+        /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
+        '$1=w800-h800',
+    );
+    const artworkUrls = [...new Set<string>([
+        fullSizeCover !== suppliedArt ? fullSizeCover : '',
+        thumbnails[0]?.width >= 800 ? suppliedArt : '',
+        songId ? `https://i.ytimg.com/vi/${songId}/maxresdefault.jpg` : '',
+        ...thumbnails.map(thumbnail => thumbnail.url),
+        suppliedArt,
+        songId ? `https://i.ytimg.com/vi/${songId}/hqdefault.jpg` : '',
+    ].filter(Boolean))];
+    const artworkKey = JSON.stringify([songId, artworkUrls]);
+    const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
+    const art = artworkUrls[artworkIndex];
+    const handleArtworkError = () => {
+        setArtworkFallback(previous => previous.key === artworkKey && previous.index > artworkIndex
+            ? previous
+            : { key: artworkKey, index: artworkIndex + 1 });
+    };
 
     const effectiveVolume = isMuted ? 0 : volume;
     const timerLabel = sleepTimer.state.preset === 'end_of_song' ? 'End of song' : `${Math.ceil(sleepTimer.state.remainingSeconds / 60)}m`;
@@ -199,7 +221,7 @@ export function NowPlayingPage() {
                         key={art}
                         src={art}
                         alt=""
-                        onError={event => { event.currentTarget.hidden = true; }}
+                        onError={handleArtworkError}
                         className={cn(
                             'h-full w-full object-cover opacity-30 blur-[90px] scale-150 transition-all duration-1000 motion-reduce:transition-none',
                             isPlaying ? 'opacity-35 scale-160' : 'opacity-20 scale-140'
@@ -268,6 +290,7 @@ export function NowPlayingPage() {
                                     {art ? (
                                         <img
                                             src={art}
+                                            onError={handleArtworkError}
                                             alt={title}
                                             className="size-full object-cover aspect-square transition-transform duration-700 motion-reduce:transition-none"
                                         />
@@ -470,6 +493,7 @@ export function NowPlayingPage() {
                                 {art ? (
                                     <img
                                         src={art}
+                                        onError={handleArtworkError}
                                         alt={title}
                                         className="size-full object-cover aspect-square transition-transform duration-700 motion-reduce:transition-none"
                                     />
@@ -887,7 +911,7 @@ export function NowPlayingPage() {
                         <div className="flex items-center justify-between border-b border-white/10 pb-4">
                             <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
                                 {art ? (
-                                    <img src={art} alt={title} className="size-12 rounded-xl object-cover shrink-0 ring-1 ring-white/10" />
+                                    <img src={art} onError={handleArtworkError} alt={title} className="size-12 rounded-xl object-cover shrink-0 ring-1 ring-white/10" />
                                 ) : (
                                     <div className="size-12 rounded-xl bg-surface grid place-items-center shrink-0">
                                         <Music2 className="size-6 text-muted-foreground" />
