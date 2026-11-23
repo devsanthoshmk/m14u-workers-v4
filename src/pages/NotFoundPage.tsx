@@ -3,7 +3,8 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { Home, Music2 } from 'lucide-react';
+import { Home } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 import { motion } from 'framer-motion';
 
 export function NotFoundPage() {
@@ -18,7 +19,7 @@ export function NotFoundPage() {
             >
                 <div className="flex justify-center">
                     <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-surface">
-                        <Music2 className="h-10 w-10 text-muted-foreground" />
+                        <BrandLogo className="size-12" alt="M14U" />
                     </div>
                 </div>
                 <h1 className="text-4xl font-bold font-heading">404</h1>

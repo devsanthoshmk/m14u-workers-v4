@@ -5,7 +5,8 @@
  */
 
 import { NavLink } from 'react-router-dom';
-import { Home, Search, Heart, ListMusic, Music2, Radio } from 'lucide-react';
+import { Home, Search, Heart, ListMusic, Radio } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -22,9 +23,7 @@ export function Sidebar() {
             <aside className="flex flex-col h-full w-[220px] bg-[hsl(240_6%_6%)] border-r border-white/[0.06]">
                 {/* ─── Logo ─── */}
                 <div className="flex items-center gap-2.5 px-5 h-16 flex-shrink-0">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15">
-                        <Music2 className="h-[18px] w-[18px] text-primary" />
-                    </div>
+                    <BrandLogo className="size-8" />
                     <span className="text-base font-bold font-heading tracking-tight text-foreground">
                         M14U
                     </span>

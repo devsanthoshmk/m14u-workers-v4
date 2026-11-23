@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Music2, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 import { useUIStore } from '@/stores/uiStore';
 
 export function OnboardingModal() {
@@ -22,9 +23,7 @@ export function OnboardingModal() {
                 >
                     {/* Logo & welcome */}
                     <div className="flex flex-col items-center text-center mb-6">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary mb-4">
-                            <Music2 className="h-9 w-9 text-primary-foreground" />
-                        </div>
+                        <BrandLogo artwork className="mb-4 size-28 rounded-2xl" />
                         <h1 className="text-2xl font-bold font-heading text-foreground">Welcome to M14U</h1>
                         <p className="text-sm text-muted-foreground mt-4 max-w-sm">
                             The web demo uses Invidious and is meant for trying out M14U. For regular listening and the full feature set, use the Android app.

@@ -1,4 +1,5 @@
-import { Music2, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { SongCard } from '@/components/song/SongCard';
@@ -10,7 +11,10 @@ export function HomePage() {
 
     return (
         <div className="mx-auto w-full max-w-6xl px-5 py-7 md:px-8 md:py-10">
-            <h1 className="text-3xl font-bold md:text-4xl">Home</h1>
+            <h1 className="flex items-center gap-3 text-3xl font-bold md:text-4xl">
+                <BrandLogo className="size-8 md:hidden" alt="M14U" />
+                Home
+            </h1>
             {recent.length > 0 ? (
                 <section className="mt-8" aria-labelledby="recently-played">
                     <h2 id="recently-played" className="mb-3 text-lg font-semibold">Recently played</h2>
@@ -22,7 +26,6 @@ export function HomePage() {
                 </section>
             ) : (
                 <section className="mt-8 border-t border-border py-8 md:py-12" aria-labelledby="start-listening">
-                    <Music2 className="mb-4 size-8 text-primary" aria-hidden="true" />
                     <h2 id="start-listening" className="text-xl font-semibold">Start listening</h2>
                     <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
                         Find a song you love. Tracks you play will show up here so you can find them again.
