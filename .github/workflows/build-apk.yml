@@ -41,8 +41,8 @@ jobs:
         distribution: 'temurin'
         java-version: '21'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+    - name: Install Android SDK packages
+      run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
     - name: Run tests
       run: |
@@ -74,7 +74,6 @@ jobs:
         APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
         APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
       run: |
-        sdkmanager 'build-tools;37.0.0'
         bash scripts/sign-android-release.sh "$GITHUB_REF_NAME"
 
     - name: Upload signed APK

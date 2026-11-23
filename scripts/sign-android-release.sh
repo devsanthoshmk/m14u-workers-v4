@@ -6,7 +6,7 @@ tag=${1:?Provide a release tag}
 [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected a stable tag such as v1.1.0'; exit 1; }
 : "${APK_KEYSTORE_BASE64:?Missing release keystore}"
 : "${APK_KEYSTORE_PASSWORD:?Missing release keystore password}"
-tools="${ANDROID_HOME:?Missing Android SDK}/build-tools/37.0.0"
+tools="${ANDROID_HOME:?Missing Android SDK}/build-tools/${ANDROID_BUILD_TOOLS_VERSION:-36.0.0}"
 unsigned=android/app/build/outputs/apk/release/app-release-unsigned.apk
 version=$("$tools/aapt" dump badging "$unsigned" | sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p")
 [[ $tag == "v$version" ]] || { echo "Tag $tag does not match APK version $version"; exit 1; }
