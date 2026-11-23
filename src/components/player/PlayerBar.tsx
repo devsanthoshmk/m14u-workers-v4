@@ -142,13 +142,17 @@ export function PlayerBar() {
                 <div className="flex md:hidden items-center gap-1 ml-auto">
                     <button
                         onClick={(e) => { e.stopPropagation(); toggleFavorite(currentSong as TrackItem); }}
-                        className="p-2 rounded-full"
+                        aria-label="Favorite"
+                        aria-pressed={isFavorite}
+                        className="grid size-11 place-items-center rounded-full focus-visible:outline-2"
                     >
                         <Heart className={cn('h-5 w-5', isFavorite ? 'fill-primary text-primary' : 'text-foreground/70')} />
                     </button>
                     <button
                         onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                        className="flex items-center justify-center h-10 w-10 rounded-full bg-primary text-primary-foreground"
+                        aria-label={isPlaying ? 'Pause' : 'Play'}
+                        aria-busy={isBuffering}
+                        className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
                     >
                         {isBuffering ? <Loader2 className="h-5 w-5 animate-spin" /> :
                             isPlaying ? <PauseIcon size={20} /> : <PlayIcon size={20} />}
@@ -166,6 +170,8 @@ export function PlayerBar() {
                             isLyricsOpen && 'text-primary'
                         )}
                         title="Lyrics (L)"
+                        aria-label="Lyrics"
+                        aria-pressed={isLyricsOpen}
                     >
                         <Mic2 className="h-[18px] w-[18px]" />
                     </button>
@@ -177,6 +183,8 @@ export function PlayerBar() {
                             isQueueOpen && 'text-primary'
                         )}
                         title="Queue (Q)"
+                        aria-label="Queue"
+                        aria-pressed={isQueueOpen}
                     >
                         <ListMusic className="h-[18px] w-[18px]" />
                     </button>

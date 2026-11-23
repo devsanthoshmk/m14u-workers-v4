@@ -1,15 +1,6 @@
-/**
- * NowPlayingPage — Full-screen player view.
- *
- * Psychology:
- * - Large album art creates immersion (reduces awareness of other UI)
- * - Blurred background art creates depth without distraction
- * - All controls are within thumb reach on mobile
- * - Lyrics can be accessed via tab — secondary but accessible
- */
-
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Share2, ListMusic } from 'lucide-react';
+import { ChevronDown, Copy, Heart, ListMusic, Mic2, Music2 } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
 import { getThumbnail, formatDuration } from '@/utils/format';
 import { ProgressBar } from '@/components/player/ProgressBar';
@@ -17,183 +8,128 @@ import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
 import { SleepTimerButton } from '@/components/player/SleepTimer';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
-import { Heart } from 'lucide-react';
+
+const iconButton = 'inline-flex size-11 shrink-0 items-center justify-center rounded-full text-secondary-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
 
 export function NowPlayingPage() {
     const navigate = useNavigate();
     const currentSong = usePlayerStore(s => s.currentSong);
     const currentTime = usePlayerStore(s => s.currentTime);
     const duration = usePlayerStore(s => s.duration);
-    
-    // Handle both TrackItem and legacy Song
-    const songId = currentSong ? ((currentSong as any).videoId || currentSong.id) : undefined;
-    const songThumbnails = currentSong ? (currentSong as any).thumbnails : undefined;
-    const songImg = currentSong ? (currentSong as any).img : undefined;
-    const songTitle = currentSong ? ((currentSong as any).name || currentSong.title) : '';
-    const songArtist = currentSong ? ((currentSong as any).artist?.name || currentSong.author) : '';
-    const songAlbum = currentSong ? (currentSong as any).album?.name : '';
-    
-    const isFavorite = usePlayerStore(s => songId ? s.isFavorite(songId) : false);
+    const isFavorite = usePlayerStore(s => currentSong ? s.isFavorite(currentSong.id || currentSong.videoId || '') : false);
     const toggleFavorite = usePlayerStore(s => s.toggleFavorite);
-
     const [showLyrics, setShowLyrics] = useState(false);
+    const [copyStatus, setCopyStatus] = useState('');
 
-    if (!currentSong) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground">No song playing</p>
-            </div>
-        );
+    function closePlayer() {
+        // BrowserRouter starts its app history index at zero, including on direct entry.
+        if (window.history.state?.idx > 0) navigate(-1);
+        else navigate('/', { replace: true });
     }
 
-    const heroArt = songImg || (songThumbnails ? getThumbnail(songThumbnails, 1080) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
-    const albumArt = songImg || (songThumbnails ? getThumbnail(songThumbnails, 544) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
+    async function copyListenAlongState() {
+        setCopyStatus('');
+        try {
+            const state = usePlayerStore.getState().exportState();
+            await navigator.clipboard.writeText(JSON.stringify(state));
+            setCopyStatus('Playback state copied.');
+        } catch {
+            setCopyStatus('Couldn’t copy playback state. Check clipboard permissions and try again.');
+        }
+    }
+
+    const songId = currentSong?.videoId || currentSong?.id;
+    const title = currentSong?.name || currentSong?.title || 'Untitled track';
+    const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
+    const album = currentSong?.album?.name;
+    const art = (currentSong?.thumbnails && getThumbnail(currentSong.thumbnails, 544)) || currentSong?.img
+        || (songId ? `https://i.ytimg.com/vi/${songId}/mqdefault.jpg` : '');
 
     return (
-        <div className="relative h-full flex flex-col overflow-hidden pt-[env(safe-area-inset-top)]">
-            {/* Background — blurred album art */}
-            <div className="absolute inset-0 z-0">
-                <img
-                    src={heroArt}
-                    alt=""
-                    className="h-full w-full object-cover blur-3xl scale-125 opacity-30"
-                />
-                <div className="absolute inset-0 bg-background/70" />
-            </div>
+        <section
+            aria-label="Now playing"
+            className="relative flex h-full flex-col isolate overflow-hidden bg-background"
+            onKeyDown={event => {
+                // Native button and slider keys must win over app-wide playback shortcuts.
+                const target = event.target as HTMLElement;
+                if ((event.code === 'Space' && target.closest('button')) || target.closest('[role="slider"]')) {
+                    event.stopPropagation();
+                }
+            }}
+        >
+            {art && <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+                <img key={art} src={art} alt="" onError={event => { event.currentTarget.hidden = true; }} className="h-full w-full scale-110 object-cover opacity-25 blur-3xl" />
+                <div className="absolute inset-0 bg-gradient-to-b from-background/40 to-background" />
+            </div>}
 
-            {/* Content */}
-            <div className="relative z-10 flex flex-col h-full">
-                {/* Top bar */}
-                <div className="flex items-center justify-between px-4 py-3">
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="p-2 rounded-full hover:bg-surface-hover transition-all"
-                    >
-                        <ChevronDown className="h-6 w-6" />
-                    </button>
+            <header className="mx-auto flex w-full max-w-6xl shrink-0 items-center gap-3 px-4 py-2 sm:px-8 sm:py-4">
+                <button type="button" onClick={closePlayer} className={iconButton} aria-label="Close Now Playing" title="Close Now Playing">
+                    <ChevronDown className="size-6" aria-hidden="true" />
+                </button>
+                <p className="min-w-0 flex-1 font-heading text-sm font-semibold">Now playing</p>
+                {currentSong && <button type="button" onClick={() => navigate('/queue')} className={iconButton} aria-label="Open queue" title="Open queue">
+                    <ListMusic className="size-5" aria-hidden="true" />
+                </button>}
+            </header>
 
-                    <div className="flex items-center gap-1">
-                        <SleepTimerButton />
-                        <button
-                            onClick={() => navigate('/queue')}
-                            className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-all"
-                            title="Queue"
-                        >
-                            <ListMusic className="h-5 w-5" />
-                        </button>
-                        <button
-                            onClick={() => {
-                                const state = usePlayerStore.getState().exportState();
-                                navigator.clipboard.writeText(JSON.stringify(state));
-                            }}
-                            className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-all"
-                            title="Copy player state (for listen-along)"
-                        >
-                            <Share2 className="h-5 w-5" />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Tab switch: Player / Lyrics */}
-                <div className="flex items-center justify-center gap-4 px-6 py-2">
-                    <button
-                        onClick={() => setShowLyrics(false)}
-                        className={cn(
-                            'text-sm font-semibold pb-1 transition-all border-b-2',
-                            !showLyrics ? 'text-foreground border-primary' : 'text-muted-foreground border-transparent'
-                        )}
-                    >
-                        Player
-                    </button>
-                    <button
-                        onClick={() => setShowLyrics(true)}
-                        className={cn(
-                            'text-sm font-semibold pb-1 transition-all border-b-2',
-                            showLyrics ? 'text-foreground border-primary' : 'text-muted-foreground border-transparent'
-                        )}
-                    >
-                        Lyrics
-                    </button>
-                </div>
-
-                {/* Main content area */}
-                <div className="flex-1 overflow-hidden">
-                    <AnimatePresence mode="wait">
-                        {showLyrics ? (
-                            <motion.div
-                                key="lyrics"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="h-full"
-                            >
-                                <LyricsPanel />
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key="player"
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 20 }}
-                                className="flex flex-col items-center justify-center h-full px-8 gap-8"
-                            >
-                                {/* Album art */}
-                                <motion.div
-                                    className="w-full max-w-[320px] md:max-w-[380px] aspect-square rounded-2xl overflow-hidden shadow-2xl"
-                                    initial={{ scale: 0.9 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: 'spring', damping: 20 }}
-                                >
-                                    <img
-                                        src={albumArt}
-                                        alt={songTitle}
-                                        className="h-full w-full object-cover"
-                                    />
-                                </motion.div>
-
-                                {/* Song info */}
-                                <div className="w-full max-w-[380px] text-center">
-                                    <h1 className="text-xl md:text-2xl font-bold font-heading line-clamp-2">
-                                        {songTitle}
-                                    </h1>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        {songArtist}
-                                        {songAlbum && ` · ${songAlbum}`}
-                                    </p>
+            {currentSong ? (
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+                    <div className="mx-auto grid min-h-full w-full max-w-6xl content-center items-center justify-items-center gap-6 px-6 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 sm:pt-5 landscape:sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] landscape:sm:gap-8 landscape:lg:gap-16">
+                        <div className={cn('relative w-full max-w-[26rem] overflow-hidden rounded-lg bg-card shadow-2xl shadow-black/40',
+                            showLyrics ? 'h-[clamp(15rem,45dvh,26rem)] landscape:sm:h-auto landscape:sm:aspect-square' : 'aspect-square max-w-[min(26rem,48dvh)] landscape:sm:max-w-[29rem]')}>
+                            {showLyrics ? <LyricsPanel embedded /> : <>
+                                <div className="absolute inset-0 grid place-items-center text-muted-foreground" aria-hidden="true">
+                                    <Music2 className="size-14" strokeWidth={1} />
                                 </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                                {art && <img key={art} src={art} alt={`Cover art for ${album || title}`} className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.hidden = true; }} />}
+                            </>}
+                        </div>
 
-                {/* Bottom controls */}
-                <div className="px-6 pb-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-8 space-y-4">
-                    {/* Progress */}
-                    <div>
-                        <ProgressBar />
-                        <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground tabular-nums">
-                            <span>{formatDuration(currentTime)}</span>
-                            <span>{formatDuration(duration)}</span>
+                        <div className="w-full min-w-0 max-w-[26rem]">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <h1 className="break-words font-heading text-[clamp(1.5rem,4vw,3.5rem)] font-bold leading-tight tracking-tight">{title}</h1>
+                                    <p className="mt-2 break-words text-base text-secondary-foreground sm:text-lg">{artist}</p>
+                                    {album && <p className="mt-1 break-words text-sm text-muted-foreground">{album}</p>}
+                                </div>
+                                <button type="button" onClick={() => toggleFavorite(currentSong)} className={cn(iconButton, isFavorite && 'text-primary hover:text-primary')} aria-label="Favorite" aria-pressed={isFavorite} title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
+                                    <Heart className={cn('size-6', isFavorite && 'fill-current')} aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 sm:mt-6">
+                                <ProgressBar />
+                                <div className="flex justify-between text-xs text-secondary-foreground tabular-nums">
+                                    <span>{formatDuration(currentTime)}</span>
+                                    <span>{formatDuration(duration)}</span>
+                                </div>
+                            </div>
+
+                            <div className="mt-3 sm:mt-5"><PlayerControls layout="full" /></div>
+
+                            <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-foreground/10 pt-3 sm:mt-6">
+                                <button type="button" onClick={() => setShowLyrics(!showLyrics)} aria-pressed={showLyrics} className={cn('inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-medium text-secondary-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring', showLyrics && 'text-primary')}>
+                                    <Mic2 className="size-4" aria-hidden="true" /> Lyrics
+                                </button>
+                                <button type="button" onClick={copyListenAlongState} title="Copy playback state for Listen Along" className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-medium text-secondary-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                                    <Copy className="size-4" aria-hidden="true" /> Copy playback state
+                                </button>
+                                <SleepTimerButton />
+                            </div>
+                            <p role="status" className={cn('text-sm text-secondary-foreground', copyStatus ? 'mt-2' : 'sr-only')}>{copyStatus}</p>
                         </div>
                     </div>
-
-                    {/* Controls row */}
-                    <div className="flex items-center justify-between">
-                        <button
-                            onClick={() => toggleFavorite(currentSong as any)}
-                            className="p-2 rounded-full transition-all"
-                        >
-                            <Heart className={cn('h-6 w-6', isFavorite ? 'fill-primary text-primary' : 'text-foreground/70')} />
-                        </button>
-
-                        <PlayerControls />
-
-                        <SleepTimerButton />
+                </div>
+            ) : (
+                <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-8 text-center">
+                    <div>
+                        <Music2 className="mx-auto mb-4 size-9 text-primary" aria-hidden="true" />
+                        <h1 className="font-heading text-2xl font-bold">Nothing is playing</h1>
+                        <p className="mt-2 text-secondary-foreground">Pick a track to start listening.</p>
+                        <button type="button" onClick={() => navigate('/search', { replace: true })} className="mt-5 min-h-11 rounded-full bg-primary px-5 font-semibold text-primary-foreground hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Find music</button>
                     </div>
                 </div>
-            </div>
-        </div>
+            )}
+        </section>
     );
 }

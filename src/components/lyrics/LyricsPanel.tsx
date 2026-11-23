@@ -18,7 +18,7 @@ import { getLyrics } from '@/services/lyrics';
 import type { LyricsData } from '@/types/lyrics';
 import { cn } from '@/lib/utils';
 
-export function LyricsPanel() {
+export function LyricsPanel({ embedded = false }: { embedded?: boolean } = {}) {
     const currentSong = usePlayerStore(s => s.currentSong);
     const currentTime = usePlayerStore(s => s.currentTime);
     const seek = usePlayerStore(s => s.seek);
@@ -76,11 +76,22 @@ export function LyricsPanel() {
     useEffect(() => {
         if (userScrolledRef.current || !activeLineRef.current) return;
 
+        if (embedded && containerRef.current) {
+            const container = containerRef.current;
+            const line = activeLineRef.current.getBoundingClientRect();
+            const viewport = container.getBoundingClientRect();
+            container.scrollTo({
+                top: container.scrollTop + line.top - viewport.top + (line.height - viewport.height) / 2,
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+            });
+            return;
+        }
+
         activeLineRef.current.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
         });
-    }, [activeLine]);
+    }, [activeLine, embedded]);
 
     // Detect user scroll — pause auto-scroll temporarily
     const handleScroll = useCallback(() => {
@@ -98,12 +109,12 @@ export function LyricsPanel() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-4 flex-shrink-0 border-b border-white/[0.06]">
                 <h2 className="text-base font-bold font-heading">Lyrics</h2>
-                <button
+                {!embedded && <button
                     onClick={() => setLyricsOpen(false)}
                     className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all"
                 >
                     <X className="h-4 w-4" />
-                </button>
+                </button>}
             </div>
 
             {/* Content */}
@@ -152,8 +163,8 @@ export function LyricsPanel() {
                                                 isActive
                                                     ? 'text-primary text-lg font-bold'
                                                     : isPast
-                                                        ? 'text-muted-foreground/40 text-sm font-medium'
-                                                        : 'text-muted-foreground/70 text-sm font-medium'
+                                                        ? 'text-muted-foreground text-sm font-medium'
+                                                        : 'text-secondary-foreground text-sm font-medium'
                                             )}
                                         >
                                             {line.text || '♪'}
@@ -181,7 +192,7 @@ export function LyricsPanel() {
 
             {/* Source attribution */}
             <div className="px-4 py-2 border-t border-white/[0.04] flex-shrink-0">
-                <p className="text-[10px] text-muted-foreground/40">
+                <p className="text-xs text-muted-foreground">
                     Lyrics provided by LRCLIB
                 </p>
             </div>

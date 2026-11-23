@@ -8,7 +8,9 @@ import { Shuffle, SkipBack, SkipForward, Repeat, Repeat1, Loader2 } from 'lucide
 import { cn } from '@/lib/utils';
 import type { RepeatMode } from '@/types/player';
 
-export function PlayerControls() {
+const focus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+
+export function PlayerControls({ layout = 'compact' }: { layout?: 'compact' | 'full' } = {}) {
     const isPlaying = usePlayerStore(s => s.isPlaying);
     const isBuffering = usePlayerStore(s => s.isBuffering);
     const isShuffled = usePlayerStore(s => s.isShuffled);
@@ -26,38 +28,45 @@ export function PlayerControls() {
     };
 
     const RepeatIcon = repeatMode === 'one' ? Repeat1 : Repeat;
+    const full = layout === 'full';
+    const button = cn('grid shrink-0 place-items-center rounded-full hover:bg-surface-hover', full ? 'size-11' : 'p-2', focus);
+    const repeatLabel = { off: 'Off', all: 'All tracks', one: 'One track' }[repeatMode];
+    const playLabel = isPlaying ? 'Pause' : 'Play';
 
     return (
-        <div className="flex items-center gap-3">
+        <div role="group" aria-label="Playback controls" className={cn('flex items-center', full ? 'justify-between gap-1' : 'gap-3')}>
             {/* Shuffle */}
             <button
+                type="button"
                 onClick={toggleShuffle}
                 className={cn(
-                    'p-2 rounded-full transition-all hover:bg-white/5',
+                    button,
                     isShuffled ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                 )}
-                title="Shuffle"
+                title="Shuffle" aria-label="Shuffle" aria-pressed={isShuffled}
             >
                 <Shuffle className="h-[18px] w-[18px]" />
             </button>
 
             {/* Previous */}
             <button
+                type="button"
                 onClick={previous}
-                className="p-2 rounded-full text-foreground hover:text-white hover:bg-white/5 transition-all"
-                title="Previous"
+                className={cn(button, 'text-foreground')}
+                title="Previous track" aria-label="Previous track"
             >
                 <SkipBack className="h-5 w-5" fill="currentColor" />
             </button>
 
             {/* Play/Pause — large, amber filled circle */}
             <button
+                type="button"
                 onClick={togglePlay}
-                className="flex items-center justify-center h-11 w-11 rounded-full bg-primary text-primary-foreground hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20"
-                title="Play/Pause (Space)"
+                className={cn('grid shrink-0 place-items-center rounded-full bg-primary text-primary-foreground hover:brightness-110 active:scale-95 shadow-lg shadow-primary/20', full ? 'size-16' : 'size-11', focus)}
+                title={playLabel} aria-label={playLabel} aria-busy={isBuffering}
             >
                 {isBuffering ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 motion-safe:animate-spin" />
                 ) : isPlaying ? (
                     <PauseIcon />
                 ) : (
@@ -67,21 +76,23 @@ export function PlayerControls() {
 
             {/* Next */}
             <button
+                type="button"
                 onClick={next}
-                className="p-2 rounded-full text-foreground hover:text-white hover:bg-white/5 transition-all"
-                title="Next"
+                className={cn(button, 'text-foreground')}
+                title="Next track" aria-label="Next track"
             >
                 <SkipForward className="h-5 w-5" fill="currentColor" />
             </button>
 
             {/* Repeat */}
             <button
+                type="button"
                 onClick={cycleRepeat}
                 className={cn(
-                    'p-2 rounded-full transition-all hover:bg-white/5',
+                    button,
                     repeatMode !== 'off' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                 )}
-                title={`Repeat: ${repeatMode}`}
+                title={`Repeat: ${repeatLabel}`} aria-label={`Repeat: ${repeatLabel}`}
             >
                 <RepeatIcon className="h-[18px] w-[18px]" />
             </button>
