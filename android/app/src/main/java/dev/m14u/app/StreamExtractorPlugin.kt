@@ -22,14 +22,13 @@ class StreamExtractorPlugin : Plugin() {
     companion object {
         private const val TAG = "StreamExtractor"
         private var initialized = false
-    }
-
-    private fun ensureInitialized() {
-        if (!initialized) {
-            // Match exactly how yt-audio-extractor initializes — simple init, no localization overload
-            NewPipe.init(OkHttpDownloader())
-            initialized = true
-            Log.d(TAG, "NewPipeExtractor initialized")
+        @Synchronized
+        internal fun ensureInitialized() {
+            if (!initialized) {
+                NewPipe.init(OkHttpDownloader())
+                initialized = true
+                Log.d(TAG, "NewPipeExtractor initialized")
+            }
         }
     }
 
