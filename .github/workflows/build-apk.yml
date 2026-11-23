@@ -7,6 +7,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      verify_release:
+        description: Build and sign a release APK without publishing it
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,6 +19,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_BUILD: ${{ github.ref_type == 'tag' || (github.ref == 'refs/heads/main' && inputs.verify_release) }}
 
     steps:
     - name: Checkout repository
@@ -47,40 +54,50 @@ jobs:
         packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
         log-accepted-android-sdk-licenses: false
 
-    - name: Run tests
+    - name: Check web app
       run: |
         pnpm lint
         pnpm typecheck
         pnpm test:ui
         pnpm test:catalog
         pnpm test:netlify
-        cd android && ./gradlew test
 
-    - name: Build APK
-      run: pnpm android:build
+    - name: Build web assets and sync Capacitor
+      run: |
+        pnpm build
+        pnpm exec cap sync android
 
-    - name: Upload APK
-      if: github.ref_type != 'tag'
+    - name: Test and build Android
+      working-directory: android
+      run: |
+        if [[ "$RELEASE_BUILD" == true ]]; then
+          ./gradlew :app:test :app:assembleRelease
+        else
+          ./gradlew :app:test :app:assembleDebug
+        fi
+
+    - name: Upload debug APK
+      if: env.RELEASE_BUILD != 'true'
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
         if-no-files-found: error
 
-    - name: Build unsigned release APK
-      if: github.ref_type == 'tag'
-      run: cd android && ./gradlew :app:assembleRelease
-
     - name: Sign and verify release APK
-      if: github.ref_type == 'tag'
+      if: env.RELEASE_BUILD == 'true'
       env:
         APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
         APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
       run: |
-        bash scripts/sign-android-release.sh "$GITHUB_REF_NAME"
+        if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+          bash scripts/sign-android-release.sh "$GITHUB_REF_NAME"
+        else
+          bash scripts/sign-android-release.sh --verify-only
+        fi
 
     - name: Upload signed APK
-      if: github.ref_type == 'tag'
+      if: env.RELEASE_BUILD == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: m14u-release
