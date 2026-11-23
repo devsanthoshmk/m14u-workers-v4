@@ -36,6 +36,7 @@ import type { QueueItem } from '@/types/player';
 
 const iconButton = 'inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 const nowPlayingDropId = 'now-playing-drop';
+const upcomingEndDropId = 'upcoming-end-drop';
 
 export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: boolean; embedded?: boolean }) {
     const navigate = useNavigate();
@@ -67,18 +68,15 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
 
     const detectCollision: CollisionDetection = (args) => {
         const section = args.active.data.current?.section;
-        if (section === 'played' && args.pointerCoordinates) {
-            const hit = pointerWithin({
-                ...args,
-                droppableContainers: args.droppableContainers.filter(({ id }) => id === nowPlayingDropId),
-            });
-            if (hit.length) return hit;
-        }
-        return closestCenter({
+        const droppableContainers = args.droppableContainers.filter(({ data, id }) => (
+            data.current?.section === 'upcoming' || (
+                section === 'played' && (id === nowPlayingDropId || id === upcomingEndDropId)
+            )
+        ));
+        const detect = section === 'played' && args.pointerCoordinates ? pointerWithin : closestCenter;
+        return detect({
             ...args,
-            droppableContainers: args.droppableContainers.filter(({ data, id }) => (
-                data.current?.section === section || (!args.pointerCoordinates && section === 'played' && id === nowPlayingDropId)
-            )),
+            droppableContainers,
         });
     };
 
@@ -88,14 +86,21 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
 
         const { queue: latestQueue, queueIndex: currentIndex, playFromQueue } = usePlayerStore.getState();
         const oldIndex = latestQueue.findIndex(q => q.queueId === active.id);
+        if (oldIndex < 0 || oldIndex === currentIndex) return;
+        const wasPlayed = oldIndex < currentIndex;
         if (over.id === nowPlayingDropId) {
-            if (oldIndex >= 0 && oldIndex < currentIndex) void playFromQueue(oldIndex);
+            if (wasPlayed) void playFromQueue(oldIndex);
+            return;
+        }
+        if (over.id === upcomingEndDropId) {
+            if (wasPlayed) reorderQueue(oldIndex, latestQueue.length - 1);
             return;
         }
 
         const newIndex = latestQueue.findIndex(q => q.queueId === over.id);
-        if (oldIndex !== -1 && newIndex !== -1) {
-            reorderQueue(oldIndex, newIndex);
+        if (newIndex > currentIndex) {
+            // Removing a played track shifts the target one slot earlier.
+            reorderQueue(oldIndex, wasPlayed ? newIndex - 1 : newIndex);
         }
     };
 
@@ -169,11 +174,9 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                         {playedItems.length > 0 && (
                             <div className="pt-3 pb-2">
                                 <QueueSectionHeading fullPage={fullPage}>Played ({playedItems.length})</QueueSectionHeading>
-                                <SortableContext items={playedItems.map(q => q.queueId)} strategy={verticalListSortingStrategy}>
-                                    {playedItems.map((item) => (
-                                        <SortableQueueItem key={item.queueId} item={item} isPlayed />
-                                    ))}
-                                </SortableContext>
+                                {playedItems.map((item) => (
+                                    <SortableQueueItem key={item.queueId} item={item} isPlayed />
+                                ))}
                             </div>
                         )}
 
@@ -186,7 +189,7 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                         )}
 
                         {/* Upcoming */}
-                        {upcomingItems.length > 0 && (
+                        {(upcomingItems.length > 0 || playedItems.length > 0) && (
                             <div className="pt-2">
                                 <QueueSectionHeading fullPage={fullPage}>Up next ({upcomingItems.length})</QueueSectionHeading>
                                 <SortableContext
@@ -197,6 +200,7 @@ export function QueuePanel({ fullPage = false, embedded = false }: { fullPage?: 
                                         <SortableQueueItem key={item.queueId} item={item} />
                                     ))}
                                 </SortableContext>
+                                {playedItems.length > 0 && <UpcomingEndDropTarget />}
                             </div>
                         )}
                     </DndContext>
@@ -274,9 +278,21 @@ function NowPlayingDropTarget({ item }: { item: QueueItem }) {
     );
 }
 
+function UpcomingEndDropTarget() {
+    const { setNodeRef, isOver, active } = useDroppable({ id: upcomingEndDropId });
+    const canDrop = active?.data.current?.section === 'played';
+
+    return (
+        <div ref={setNodeRef} className={cn('mt-1 flex min-h-11 items-center rounded-lg border border-dashed border-border px-3 text-xs text-muted-foreground', canDrop && 'border-primary/50', isOver && 'bg-primary/20')}>
+            Drop a played track here to add it to the end
+        </div>
+    );
+}
+
 function SortableQueueItem({ item, isPlayed = false }: { item: QueueItem; isPlayed?: boolean }) {
-    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, isOver, active } = useSortable({
         id: item.queueId,
+        disabled: { droppable: isPlayed },
         data: { section: isPlayed ? 'played' : 'upcoming' },
     });
     const song = item.song;
@@ -288,13 +304,13 @@ function SortableQueueItem({ item, isPlayed = false }: { item: QueueItem; isPlay
     };
 
     return (
-        <div ref={setNodeRef} style={style} className="flex min-w-0 items-center">
+        <div ref={setNodeRef} style={style} className={cn('flex min-w-0 items-center rounded-lg', isOver && active?.data.current?.section === 'played' && 'shadow-[inset_0_2px_0_0_var(--color-primary)]')}>
             <button
                 {...attributes}
                 {...listeners}
                 ref={setActivatorNodeRef}
-                aria-label={`Reorder ${song.name || song.title || 'track'}`}
-                title="Reorder track"
+                aria-label={`${isPlayed ? 'Move' : 'Reorder'} ${song.name || song.title || 'track'}`}
+                title={isPlayed ? 'Move to Up next or Now playing' : 'Reorder track'}
                 className={cn(iconButton, 'size-11 cursor-grab touch-none active:cursor-grabbing')}
             >
                 <GripVertical className="size-4" aria-hidden="true" />
