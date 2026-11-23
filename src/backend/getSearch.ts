@@ -3,18 +3,17 @@ import { getClient, streamMapper, listMapper, parsePublished } from './utils.js'
 
 export default async function(params: { q: string, f?: string }) {
   const { q, f } = params;
-  console.log('[getSearch] Starting search for:', q, 'filter:', f);
-  
   const yt = await getClient();
-  console.log('[getSearch] Got client, starting search...');
 
-  if (f === 'song' || f === 'artist' || f === 'album') {
+  async function searchMusic(f: 'song' | 'artist' | 'album') {
     const results = await yt.music.search(q, { type: f });
-    const shelf = results.songs || results.artists || results.albums;
+    const shelf = f === 'song' ? results.songs : f === 'artist' ? results.artists : results.albums;
     return (shelf?.contents || [])
       .map((node) => (f === 'song' ? streamMapper(node) : listMapper(node)))
       .filter((item): item is NonNullable<ReturnType<typeof streamMapper>> => item !== null);
   }
+
+  if (f === 'song' || f === 'artist' || f === 'album') return searchMusic(f);
 
   let type: 'video' | 'playlist' | 'channel' | 'all' = 'all';
   let sortBy: 'relevance' | 'upload_date' | 'view_count' | undefined;
@@ -28,8 +27,12 @@ export default async function(params: { q: string, f?: string }) {
   let results;
   try {
     results = await yt.search(q, { type, sort_by: sortBy });
-  } catch {
-    return [];
+  } catch (err) {
+    // Music results are a useful fallback for unfiltered search, but cannot
+    // honor explicit video sort, playlist, or channel filters.
+    if (f && f !== 'all') throw err;
+    console.warn('[getSearch] YouTube search failed; falling back to YouTube Music');
+    return searchMusic('song');
   }
   const contents = (type === 'video' ? results.videos : results.results) || [];
 

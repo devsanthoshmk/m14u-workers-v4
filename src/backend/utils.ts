@@ -106,7 +106,7 @@ export function streamMapper(node: Helpers.YTNode): YTItem | null {
       duration: formatDuration(video.duration?.text?.toString()),
       subtext,
       type: 'video',
-      img: getThumbnail(video.thumbnail || [])
+      img: getThumbnail(video.thumbnails || [])
     };
   }
 
