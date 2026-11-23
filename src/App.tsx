@@ -1,10 +1,17 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { isNative } from '@/lib/utils/platform';
+import { checkForLiveResolverUpdate } from '@/lib/modules/liveResolver';
 import { AppShell } from '@/components/layout/AppShell';
 import { NowPlayingPage } from '@/pages/NowPlayingPage';
 import { QueuePage } from '@/pages/QueuePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 function App() {
+  useEffect(() => {
+    if (isNative()) void checkForLiveResolverUpdate();
+  }, []);
+
   return (
     <Routes>
       <Route element={<AppShell />}>

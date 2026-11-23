@@ -2,6 +2,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { AudioStream } from '@/types/music';
 import { isNative } from '@/lib/utils/platform';
 import StreamExtractor from '@/plugins/StreamExtractor';
+import { resolveWithLiveBundle } from './liveResolver';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -36,23 +37,37 @@ export default async function getStreamData(
   }
 
   if (isNative()) {
-    // Try native extraction with retry (handles "page needs to be reloaded" errors)
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const nativeData = await StreamExtractor.getStreamData({ videoId: id });
-        const result = nativeData as unknown as Invidious;
-        streamCache.set(id, { data: result, timestamp: Date.now() });
-        console.log(`Native extraction succeeded for ${id} (attempt ${attempt + 1})`);
-        return result;
-      } catch (e) {
-        console.warn(`Native extraction attempt ${attempt + 1} failed:`, e);
-        if (attempt === 0) {
-          // Wait briefly before retry — NewPipeExtractor may need to re-fetch player
-          await new Promise(r => setTimeout(r, 1000));
+    const race = new AbortController();
+    const nativeSignal = AbortSignal.any([race.signal, AbortSignal.timeout(6500), ...(signal ? [signal] : [])]);
+    let rejectNative: () => void = () => {};
+    const nativeDeadline = new Promise<never>((_, reject) => {
+      rejectNative = () => reject(nativeSignal.reason);
+      if (nativeSignal.aborted) rejectNative();
+      else nativeSignal.addEventListener('abort', rejectNative, { once: true });
+    });
+    try {
+      nativeSignal.throwIfAborted();
+      const native = StreamExtractor.getStreamData({ videoId: id }).then(data => {
+        if (!data.adaptiveFormats?.some(stream => stream.type.startsWith('audio/') && stream.url)) {
+          throw new Error('Native extractor returned no audio streams');
         }
-      }
+        return data as unknown as Invidious;
+      });
+      const live = resolveWithLiveBundle(id, nativeSignal).then(data => {
+        if (!data) throw new Error('Live resolver returned no audio streams');
+        return data;
+      });
+      const data = await Promise.race([Promise.any([native, live]), nativeDeadline]);
+      signal?.throwIfAborted();
+      streamCache.set(id, { data, timestamp: Date.now() });
+      return data;
+    } catch (error) {
+      signal?.throwIfAborted();
+      console.warn('Android extraction failed, falling back to Invidious', error);
+    } finally {
+      nativeSignal.removeEventListener('abort', rejectNative);
+      race.abort();
     }
-    console.warn('Native extraction failed after retries, falling back to Invidious');
   }
 
   const fetchData = async (proxy: string): Promise<Invidious> => {
