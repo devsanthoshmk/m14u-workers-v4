@@ -6,15 +6,17 @@
  */
 
 import { useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { getThumbnail } from '@/utils/format';
-import { X, Trash2, GripVertical, Play, ChevronLeft } from 'lucide-react';
+import { X, Trash2, GripVertical, Play, ChevronLeft, ListMusic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     DndContext,
     closestCenter,
+    KeyboardSensor,
     PointerSensor,
     TouchSensor,
     useSensor,
@@ -22,6 +24,7 @@ import {
 } from '@dnd-kit/core';
 import {
     SortableContext,
+    sortableKeyboardCoordinates,
     verticalListSortingStrategy,
     useSortable,
 } from '@dnd-kit/sortable';
@@ -29,7 +32,9 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { QueueItem } from '@/types/player';
 
-export function QueuePanel() {
+const iconButton = 'inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/[0.07] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
+
+export function QueuePanel({ fullPage = false }: { fullPage?: boolean }) {
     const navigate = useNavigate();
     const queue = usePlayerStore(s => s.queue);
     const queueIndex = usePlayerStore(s => s.queueIndex);
@@ -45,12 +50,16 @@ export function QueuePanel() {
 
     // Auto-scroll to "Now Playing" when it changes
     useEffect(() => {
-        nowPlayingRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        nowPlayingRef.current?.scrollIntoView({
+            block: 'nearest',
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+        });
     }, [queueIndex]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
 
     const handleDragEnd = (event: DragEndEvent) => {
@@ -66,59 +75,69 @@ export function QueuePanel() {
 
     const handleClose = () => {
         setQueueOpen(false);
-        // On mobile (full-page /queue route), navigate back
-        if (window.location.pathname === '/queue') {
-            navigate(-1);
+        if (fullPage) {
+            if (window.history.state?.idx > 0) navigate(-1);
+            else navigate('/', { replace: true });
         }
     };
 
     return (
-        <div className="flex flex-col h-full w-full">
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-4 flex-shrink-0 border-b border-white/[0.06]">
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleClose}
-                        className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all md:hidden"
-                    >
-                        <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <h2 className="text-base font-bold font-heading">Queue</h2>
+            <header className={cn('flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3', fullPage && 'sm:px-6 sm:py-5')}>
+                <div className="flex min-w-0 items-center gap-2">
+                    {fullPage && (
+                        <button
+                            onClick={handleClose}
+                            aria-label="Go back"
+                            className={cn(iconButton, 'md:hidden')}
+                        >
+                            <ChevronLeft className="size-5" aria-hidden="true" />
+                        </button>
+                    )}
+                    <div className="min-w-0">
+                        {fullPage ? <h1 className="font-heading text-2xl font-bold tracking-tight sm:text-3xl">Queue</h1> : <h2 className="font-heading text-lg font-bold tracking-tight">Queue</h2>}
+                        <p className="text-xs text-muted-foreground">{queue.length} {queue.length === 1 ? 'track' : 'tracks'}</p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex shrink-0 items-center">
                     {queue.length > 0 && (
                         <button
                             onClick={clearQueue}
-                            className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all"
+                            className={iconButton}
+                            aria-label="Clear queue"
                             title="Clear queue"
                         >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="size-4" aria-hidden="true" />
                         </button>
                     )}
-                    <button
+                    {!fullPage && <button
                         onClick={handleClose}
-                        className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-all hidden md:block"
+                        aria-label="Close queue"
+                        className={iconButton}
                     >
-                        <X className="h-4 w-4" />
-                    </button>
+                        <X className="size-4" aria-hidden="true" />
+                    </button>}
                 </div>
-            </div>
+            </header>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin px-2 pb-4">
+            <div className={cn('min-h-0 flex-1 overflow-y-auto scrollbar-thin px-2 pb-4', fullPage && 'sm:px-6')}>
                 {queue.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                        <p className="text-sm text-muted-foreground">Queue is empty</p>
-                        <p className="text-xs text-muted-foreground/60 mt-1">Search for songs to add them here</p>
+                    <div className="mx-1 mt-4 rounded-xl bg-surface p-4 sm:p-5">
+                        <ListMusic className="mb-3 size-6 text-primary" aria-hidden="true" />
+                        <p className="font-heading text-sm font-semibold text-foreground">Your queue is empty</p>
+                         <p className="mt-1 max-w-sm text-sm text-muted-foreground">Play a song or choose Add to queue from a song’s menu.</p>
+                         <Link to="/search" onClick={() => setQueueOpen(false)} className="mt-2 inline-flex min-h-11 items-center rounded text-sm font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2">
+                             Find music
+                         </Link>
                     </div>
                 ) : (
                     <>
                         {/* Previously Played */}
                         {playedItems.length > 0 && (
                             <div className="pt-3 pb-2">
-                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">
-                                    Played · {playedItems.length}
-                                </p>
+                                <QueueSectionHeading fullPage={fullPage}>Played ({playedItems.length})</QueueSectionHeading>
                                 {playedItems.map((item) => (
                                     <QueueItemRow key={item.queueId} item={item} isPlayed />
                                 ))}
@@ -128,7 +147,7 @@ export function QueuePanel() {
                         {/* Now Playing */}
                         {currentItem && (
                             <div className="pt-3 pb-2" ref={nowPlayingRef}>
-                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">Now Playing</p>
+                                <QueueSectionHeading fullPage={fullPage}>Now playing</QueueSectionHeading>
                                 <QueueItemRow item={currentItem} isCurrent />
                             </div>
                         )}
@@ -136,9 +155,7 @@ export function QueuePanel() {
                         {/* Upcoming */}
                         {upcomingItems.length > 0 && (
                             <div className="pt-2">
-                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">
-                                    Next · {upcomingItems.length}
-                                </p>
+                                <QueueSectionHeading fullPage={fullPage}>Up next ({upcomingItems.length})</QueueSectionHeading>
                                 <DndContext
                                     sensors={sensors}
                                     collisionDetection={closestCenter}
@@ -162,46 +179,56 @@ export function QueuePanel() {
     );
 }
 
+function QueueSectionHeading({ fullPage, children }: { fullPage: boolean; children: ReactNode }) {
+    const Heading = fullPage ? 'h2' : 'h3';
+    return <Heading className="mb-1 px-2 text-sm font-semibold text-foreground">{children}</Heading>;
+}
+
 function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: QueueItem; isCurrent?: boolean; isPlayed?: boolean }) {
     const playFromQueue = usePlayerStore(s => s.playFromQueue);
     const removeFromQueue = usePlayerStore(s => s.removeFromQueue);
     const queue = usePlayerStore(s => s.queue);
 
     const index = queue.findIndex(q => q.queueId === item.queueId);
-    const s = item.song as any;
+    const s = item.song;
+    const title = s.name || s.title || 'Unknown track';
     const thumbnail = s.img || (s.thumbnails ? getThumbnail(s.thumbnails, 60) : '') || `https://i.ytimg.com/vi/${s.videoId || s.id}/mqdefault.jpg`;
 
     return (
         <div
+            aria-current={isCurrent ? 'true' : undefined}
             className={cn(
-                'flex items-center gap-3 px-2 py-2 rounded-lg group transition-colors',
-                isCurrent ? 'bg-primary/[0.08]' : 'hover:bg-white/[0.04]',
-                isPlayed && 'opacity-50'
+                'flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition-colors sm:px-2',
+                isCurrent ? 'bg-primary/[0.09]' : 'hover:bg-white/[0.04]'
             )}
         >
-            <div className="relative h-10 w-10 rounded-md overflow-hidden flex-shrink-0 ring-1 ring-white/10">
-                <img src={thumbnail} alt={s.name || s.title || ''} className="h-full w-full object-cover" loading="lazy" />
+            <div className="relative size-9 shrink-0 overflow-hidden rounded-md bg-surface ring-1 ring-white/10 sm:size-10">
+                <img src={thumbnail} alt="" className="size-full object-cover" loading="lazy" />
             </div>
             <div className="flex-1 min-w-0">
-                <p className={cn('text-[13px] font-medium line-clamp-1', isCurrent ? 'text-primary' : 'text-foreground')}>
-                    {s.name || s.title}
+                <p className={cn('truncate text-sm font-medium', isCurrent ? 'text-primary' : isPlayed ? 'text-secondary-foreground' : 'text-foreground')} title={title}>
+                    {title}
                 </p>
-                <p className="text-[11px] text-muted-foreground line-clamp-1">{s.artist?.name || s.author}</p>
+                <p className="truncate text-xs text-muted-foreground">{s.artist?.name || s.author}</p>
             </div>
-            <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+            <div className="flex shrink-0 items-center">
                 {!isCurrent && (
                     <button
                         onClick={(e) => { e.stopPropagation(); playFromQueue(index); }}
-                        className="p-2 rounded-full hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                        aria-label={`Play ${title}`}
+                        title="Play track"
+                        className={iconButton}
                     >
-                        <Play className="h-4 w-4" fill="currentColor" />
+                        <Play className="size-4" fill="currentColor" aria-hidden="true" />
                     </button>
                 )}
                 <button
                     onClick={(e) => { e.stopPropagation(); removeFromQueue(item.queueId); }}
-                    className="p-2 rounded-full hover:bg-white/10 text-muted-foreground hover:text-destructive"
+                    aria-label={`Remove ${title} from queue`}
+                    title="Remove from queue"
+                    className={iconButton}
                 >
-                    <X className="h-4 w-4" />
+                    <X className="size-4" aria-hidden="true" />
                 </button>
             </div>
         </div>
@@ -209,9 +236,10 @@ function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: Que
 }
 
 function SortableQueueItem({ item }: { item: QueueItem }) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
         id: item.queueId,
     });
+    const song = item.song;
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -220,15 +248,18 @@ function SortableQueueItem({ item }: { item: QueueItem }) {
     };
 
     return (
-        <div ref={setNodeRef} style={style} className="flex items-center gap-1">
+        <div ref={setNodeRef} style={style} className="flex min-w-0 items-center">
             <button
                 {...attributes}
                 {...listeners}
-                className="p-1 rounded text-muted-foreground/60 md:text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
+                ref={setActivatorNodeRef}
+                aria-label={`Reorder ${song.name || song.title || 'track'}`}
+                title="Reorder track"
+                className={cn(iconButton, 'w-8 cursor-grab touch-none active:cursor-grabbing')}
             >
-                <GripVertical className="h-4 w-4" />
+                <GripVertical className="size-4" aria-hidden="true" />
             </button>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
                 <QueueItemRow item={item} />
             </div>
         </div>
