@@ -37,6 +37,21 @@ const server = await createServer({
 after(() => server.close());
 const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts');
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
+const { trackArtworkUrls } = await server.ssrLoadModule('/src/utils/trackArtwork.ts');
+
+test('media artwork prefers a full-size cover and keeps fallbacks', () => {
+    const img = 'https://lh3.googleusercontent.com/cover=w60-h60-l90-rj';
+    const largest = 'https://example.test/large.jpg';
+    const urls = trackArtworkUrls({ id: 'dQw4w9WgXcQ', img, thumbnails: [
+        { url: img, width: 60 }, { url: largest, width: 800 },
+    ] });
+    assert.deepEqual(urls.slice(0, 3), [
+        'https://lh3.googleusercontent.com/cover=w800-h800', largest,
+        'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+    ]);
+    assert.equal(urls.at(-1), img);
+    assert.equal(urls.filter(url => url === img).length, 1);
+});
 const player = usePlayerStore.getState;
 const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };

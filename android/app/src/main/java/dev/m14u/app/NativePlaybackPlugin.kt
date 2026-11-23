@@ -84,11 +84,17 @@ class NativePlaybackPlugin : Plugin() {
             val row = rows.getJSONObject(index)
             val id = row.getString("id")
             require(id.matches(Regex("[A-Za-z0-9_-]{11}"))) { "Invalid track ID" }
-            val artwork = row.optString("artwork")
+            val artwork = row.optJSONArray("artwork") ?: JSONArray()
             val unresolved = Uri.Builder().scheme("m14u-track").authority("youtube").appendPath(id)
                 .appendQueryParameter("proxy", row.optString("proxy")).build()
             val metadata = MediaMetadata.Builder().setTitle(row.optString("title")).setArtist(row.optString("artist"))
-            if (artwork.startsWith("https://")) metadata.setArtworkUri(Uri.parse(artwork))
+            val candidates = (0 until artwork.length()).map { artwork.optString(it) }
+                .filter { it.startsWith("https://") }.take(10)
+            if (candidates.isNotEmpty()) {
+                val uri = Uri.Builder().scheme(MediaArtworkLoader.SCHEME).authority("track")
+                candidates.forEach { uri.appendQueryParameter("url", it) }
+                metadata.setArtworkUri(uri.build())
+            }
             MediaItem.Builder().setMediaId(row.getString("queueId"))
                 .setUri(row.optString("url").ifBlank { unresolved.toString() })
                 .setMediaMetadata(metadata.build()).build()

@@ -17,6 +17,7 @@ import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
 import { isAndroid } from '@/lib/utils/platform';
 import NativePlayback, { type NativePlaybackState } from '@/plugins/NativePlayback';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 
 interface QueueItem {
     queueId: string;
@@ -136,7 +137,7 @@ const androidPlayback = isAndroid();
 const nativeRepeat = { off: 0, one: 1, all: 2 };
 const nativeQueue = (queue: QueueItem[], selectedId?: string, url?: string) => queue.map(({ queueId, song }) => ({
     queueId, id: song.id, title: song.name || song.title, artist: song.artist?.name || song.author,
-    artwork: song.img || song.thumbnails?.[0]?.url, url: queueId === selectedId ? url : undefined,
+    artwork: trackArtworkUrls(song), url: queueId === selectedId ? url : undefined,
     proxy: import.meta.env.VITE_INVIDIOUS_URL?.trim() || usePlayerStore.getState().proxy || 'https://yt.omada.cafe',
 }));
 let nativeLoading = false;

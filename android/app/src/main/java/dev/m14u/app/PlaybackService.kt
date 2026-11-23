@@ -11,10 +11,12 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.MediaSession
+import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
@@ -104,7 +106,11 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         })
-        session = MediaSession.Builder(this, player).setCallback(callback).setSessionActivity(activity).build()
+        val artworkLoader = DataSourceBitmapLoader(
+            DataSourceBitmapLoader.DEFAULT_EXECUTOR_SERVICE.get(),
+            DefaultHttpDataSource.Factory().setConnectTimeoutMs(3000).setReadTimeoutMs(3000), null, 1024)
+        session = MediaSession.Builder(this, player).setCallback(callback).setSessionActivity(activity)
+            .setBitmapLoader(CacheBitmapLoader(MediaArtworkLoader(artworkLoader))).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

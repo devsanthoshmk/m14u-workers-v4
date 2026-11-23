@@ -15,7 +15,7 @@ interface NativeQueueItem {
     id: string;
     title: string;
     artist: string;
-    artwork?: string;
+    artwork: string[];
     url?: string;
     proxy?: string;
 }
