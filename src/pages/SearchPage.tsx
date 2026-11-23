@@ -2,7 +2,7 @@
  * SearchPage — Full-text search with debounced input and results.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Search, X, Clock, TrendingUp, Loader2 } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -56,13 +56,11 @@ export function SearchPage() {
         inputRef.current?.focus();
     };
 
-    const handlePlayFromResults = useCallback((index: number) => {
-        if (results.length > 0) {
-            setQueue(results as TrackItem[], index);
-        }
-    }, [results, setQueue]);
-
     const songs = results.filter(r => r.type === 'song' || r.type === 'video') as TrackItem[];
+
+    const handlePlayFromResults = (index: number) => {
+        void setQueue(songs, index);
+    };
 
     return (
         <div className="pb-8">
@@ -217,7 +215,7 @@ export function SearchPage() {
                         {songs.length > 0 && viewMode === 'grid' && (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1">
                                 {songs.map((song, i) => (
-                                    <SongCard key={`${song.id}-${i}`} song={song} index={i} />
+                                    <SongCard key={`${song.id}-${i}`} song={song} index={i} onPlay={() => handlePlayFromResults(i)} />
                                 ))}
                             </div>
                         )}

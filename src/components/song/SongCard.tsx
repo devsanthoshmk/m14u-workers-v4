@@ -15,9 +15,10 @@ import type { Song, TrackItem } from '@/types/music';
 interface SongCardProps {
     song: TrackItem | Song;
     index: number;
+    onPlay?: () => void;
 }
 
-export function SongCard({ song }: SongCardProps) {
+export function SongCard({ song, onPlay }: SongCardProps) {
     // Support both TrackItem and legacy Song - use any casting
     const s = song as any;
     const songId = s.videoId || s.id;
@@ -29,6 +30,7 @@ export function SongCard({ song }: SongCardProps) {
     
     const currentSong = usePlayerStore(s => s.currentSong);
     const isPlaying = usePlayerStore(s => s.isPlaying);
+    const isBuffering = usePlayerStore(s => s.isBuffering);
     const playSong = usePlayerStore(s => s.playSong);
     const togglePlay = usePlayerStore(s => s.togglePlay);
     const addToQueue = usePlayerStore(s => s.addToQueue);
@@ -55,7 +57,9 @@ export function SongCard({ song }: SongCardProps) {
 
     const handlePlay = () => {
         if (isCurrentSong) {
-            togglePlay();
+            if (!isBuffering) void togglePlay();
+        } else if (onPlay) {
+            onPlay();
         } else {
             playSong(song as TrackItem);
         }
@@ -91,21 +95,20 @@ export function SongCard({ song }: SongCardProps) {
                 )}
 
                 {/* Hover overlay with centered play button */}
-                <div className={cn(
-                    'absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity duration-200',
-                    isCurrentSong && isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
-                )}>
-                    <button
-                        onClick={handlePlay}
-                        className="flex items-center justify-center h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-transform"
-                    >
+                <button
+                    type="button"
+                    onClick={handlePlay}
+                    aria-label={`${isCurrentSong && isPlaying ? 'Pause' : 'Play'} ${songTitle}`}
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                    <span className="flex items-center justify-center h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30">
                         {isCurrentSong && isPlaying ? (
                             <Pause className="h-5 w-5" fill="currentColor" />
                         ) : (
                             <Play className="h-5 w-5 ml-0.5" fill="currentColor" />
                         )}
-                    </button>
-                </div>
+                    </span>
+                </button>
 
                 {/* Context menu button */}
                 <button
