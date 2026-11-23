@@ -3,6 +3,7 @@ import type { TrackItem, YTListItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 
 const API_BASE = `${API_BASE_URL}/api`;
+let activeSearch: AbortController | undefined;
 
 interface SearchState {
   query: string;
@@ -27,23 +28,28 @@ export const useSearchStore = create<SearchState>((set, get) => ({
 
   search: async (query: string, filter?: string) => {
     if (!query.trim()) {
-      set({ results: [], query: '' });
+      get().clearSearch();
       return;
     }
 
-    set({ isLoading: true, error: null, query, filter: filter || 'all' });
+    activeSearch?.abort();
+    const request = new AbortController();
+    activeSearch = request;
+    set({ isLoading: true, error: null, results: [], query, filter: filter || 'all' });
 
     try {
       const f = filter || get().filter;
       const params = new URLSearchParams({ q: query });
       if (f && f !== 'all') params.set('f', f);
       
-      const res = await fetch(`${API_BASE}/search?${params}`);
+      const res = await fetch(`${API_BASE}/search?${params}`, { signal: request.signal });
       if (!res.ok) throw new Error('Search failed');
       
       const data = await res.json();
+      if (request.signal.aborted) return;
       set({ results: Array.isArray(data) ? data : [], isLoading: false });
     } catch (err) {
+      if (request.signal.aborted) return;
       set({ 
         error: err instanceof Error ? err.message : 'Search failed', 
         isLoading: false,
@@ -71,6 +77,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   },
 
   clearSearch: () => {
-    set({ query: '', results: [], suggestions: [], error: null });
+    activeSearch?.abort();
+    set({ query: '', results: [], suggestions: [], error: null, isLoading: false });
   }
 }));

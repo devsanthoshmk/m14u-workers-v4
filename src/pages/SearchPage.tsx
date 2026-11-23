@@ -1,7 +1,7 @@
 /** SearchPage — Debounced music search and playback from results. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, X, Clock, Loader2 } from 'lucide-react';
+import { Search, X, Clock, Loader2, MoreHorizontal } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSearchStore } from '@/lib/stores/search';
@@ -17,22 +17,21 @@ const SUGGESTIONS = [
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
-type SearchResult =
-    | { term: string; status: 'pending' | 'error' }
-    | { term: string; status: 'done'; songs: TrackItem[] };
-
 export function SearchPage() {
     const [query, setQuery] = useState('');
+    const [visibleRecentCount, setVisibleRecentCount] = useState(3);
     const [isComposing, setIsComposing] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-    const [result, setResult] = useState<SearchResult | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const suggestionsHeadingRef = useRef<HTMLHeadingElement>(null);
-    const requestRef = useRef<SearchResult | null>(null);
-    const searchChain = useRef(Promise.resolve());
     const term = query.trim();
 
     const search = useSearchStore(s => s.search);
+    const searchedTerm = useSearchStore(s => s.query);
+    const results = useSearchStore(s => s.results);
+    const loading = useSearchStore(s => s.isLoading);
+    const error = useSearchStore(s => s.error);
+    const clearSearch = useSearchStore(s => s.clearSearch);
     const setQueue = usePlayerStore(s => s.setQueue);
     const recentSearches = useUIStore(s => s.recentSearches);
     const addRecentSearch = useUIStore(s => s.addRecentSearch);
@@ -40,27 +39,10 @@ export function SearchPage() {
     const clearRecentSearches = useUIStore(s => s.clearRecentSearches);
 
     const runSearch = useCallback((value: string, retry = false) => {
-        if (!value || (requestRef.current?.term === value && !(retry && requestRef.current.status === 'error'))) return;
-
-        const request = { term: value, status: 'pending' } as const;
-        requestRef.current = request;
-        setResult(request);
-
-        // The store has one shared result slot. Serialize requests so each snapshot
-        // belongs to its term, skipping queued work superseded by newer input.
-        searchChain.current = searchChain.current.then(async () => {
-            if (requestRef.current !== request) return;
-            addRecentSearch(value);
-            await search(value);
-            if (requestRef.current !== request) return;
-
-            const { error, results } = useSearchStore.getState();
-            const completed: SearchResult = error
-                ? { term: value, status: 'error' }
-                : { term: value, status: 'done', songs: results.filter(r => r.type === 'song' || r.type === 'video') as TrackItem[] };
-            requestRef.current = completed;
-            setResult(completed);
-        });
+        const current = useSearchStore.getState();
+        if (!value || (current.query === value && !(retry && current.error))) return;
+        addRecentSearch(value);
+        void search(value);
     }, [addRecentSearch, search]);
 
     useEffect(() => {
@@ -69,11 +51,10 @@ export function SearchPage() {
         return () => window.clearTimeout(timer);
     }, [term, isComposing, runSearch]);
 
+    useEffect(() => () => clearSearch(), [clearSearch]);
+
     const updateQuery = (value: string) => {
-        if (value.trim() !== term) {
-            requestRef.current = null;
-            setResult(null);
-        }
+        if (value.trim() !== term) clearSearch();
         setQuery(value);
     };
 
@@ -88,11 +69,11 @@ export function SearchPage() {
         inputRef.current?.focus();
     };
 
-    const current = result?.term === term ? result : null;
-    const songs = current?.status === 'done' ? current.songs : [];
-    const pending = Boolean(term && (!current || current.status === 'pending'));
-    const failed = current?.status === 'error';
-    const empty = current?.status === 'done' && songs.length === 0;
+    const current = Boolean(term && searchedTerm === term);
+    const songs = current ? results.filter(r => r.type === 'song' || r.type === 'video') as TrackItem[] : [];
+    const pending = Boolean(term && (!current || loading));
+    const failed = current && Boolean(error);
+    const empty = current && !loading && !failed && songs.length === 0;
     const announcement = pending ? 'Searching…'
         : failed ? 'Search couldn’t load.'
         : empty ? `No songs found for “${term}”.`
@@ -140,7 +121,7 @@ export function SearchPage() {
                                     clearQuery();
                                 }
                             }}
-                            placeholder="Songs, artists, or albums"
+                            placeholder="Search for tracks"
                             className={`h-12 w-full rounded-xl border border-border bg-surface pl-11 pr-12 text-base text-foreground placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden ${focusRing}`}
                         />
                         {query && (
@@ -171,6 +152,7 @@ export function SearchPage() {
                                         onClick={() => {
                                             suggestionsHeadingRef.current?.focus();
                                             clearRecentSearches();
+                                            setVisibleRecentCount(3);
                                         }}
                                         className={`min-h-10 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground ${focusRing}`}
                                     >
@@ -178,7 +160,7 @@ export function SearchPage() {
                                     </button>
                                 </div>
                                 <ul className="flex flex-wrap gap-2">
-                                    {recentSearches.map((entry) => (
+                                    {recentSearches.slice(0, visibleRecentCount).map((entry) => (
                                         <li key={entry} className="flex min-w-0 max-w-full items-stretch rounded-full bg-surface">
                                             <button
                                                 type="button"
@@ -203,12 +185,29 @@ export function SearchPage() {
                                             </button>
                                         </li>
                                     ))}
+                                    {recentSearches.length > visibleRecentCount && (
+                                        <li>
+                                            <button
+                                                type="button"
+                                                aria-label="Show more recent searches"
+                                                title="Show more recent searches"
+                                                onClick={(event) => {
+                                                    const previous = event.currentTarget.closest('li')?.previousElementSibling;
+                                                    previous?.querySelector('button')?.focus();
+                                                    setVisibleRecentCount(count => count + 3);
+                                                }}
+                                                className={`grid size-11 place-items-center rounded-full bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground ${focusRing}`}
+                                            >
+                                                <MoreHorizontal aria-hidden="true" className="size-5" />
+                                            </button>
+                                        </li>
+                                    )}
                                 </ul>
                             </section>
                         )}
                         <section aria-labelledby="suggested-searches-heading">
                             <h2 id="suggested-searches-heading" ref={suggestionsHeadingRef} tabIndex={-1} className="mb-3 w-fit rounded-sm font-heading text-base font-bold focus:outline-primary">
-                                Try searching
+                                Popular track searches
                             </h2>
                             <ul className="flex flex-wrap gap-2">
                                 {SUGGESTIONS.map((suggestion) => (
