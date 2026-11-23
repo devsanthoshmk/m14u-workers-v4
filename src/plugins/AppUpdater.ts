@@ -1,14 +1,20 @@
 import { registerPlugin } from '@capacitor/core';
 
+export interface CheckForUpdateOptions {
+  repo?: string;
+}
+
+export interface AppUpdateResult {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  downloadUrl?: string;
+  releaseNotes?: string;
+  error?: string;
+}
+
 export interface AppUpdaterPlugin {
-  checkForUpdate(): Promise<{
-    hasUpdate: boolean;
-    currentVersion: string;
-    latestVersion?: string;
-    downloadUrl?: string;
-    releaseNotes?: string;
-    error?: string;
-  }>;
+  checkForUpdate(options?: CheckForUpdateOptions): Promise<AppUpdateResult>;
   openDownloadUrl(options: { url: string }): Promise<void>;
 }
 

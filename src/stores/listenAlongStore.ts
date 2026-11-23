@@ -30,12 +30,12 @@ export const useListenAlongStore = create<ListenAlongState>(() => ({
     displayName: '',
     isSyncPaused: false,
 
-    createRoom: async (_displayName: string) => {
+    createRoom: async () => {
         console.info('Listen Along: Coming Soon');
         throw new Error('Listen Along is coming soon!');
     },
 
-    joinRoom: async (_roomCode: string, _displayName: string) => {
+    joinRoom: async () => {
         console.info('Listen Along: Coming Soon');
         throw new Error('Listen Along is coming soon!');
     },
@@ -52,7 +52,7 @@ export const useListenAlongStore = create<ListenAlongState>(() => ({
         console.info('Listen Along: Coming Soon');
     },
 
-    setDisplayName: (_name: string) => {
+    setDisplayName: () => {
         console.info('Listen Along: Coming Soon');
     },
 }));

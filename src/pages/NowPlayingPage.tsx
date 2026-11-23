@@ -70,14 +70,12 @@ export function NowPlayingPage() {
     const setVolume = usePlayerStore(s => s.setVolume);
     const toggleMute = usePlayerStore(s => s.toggleMute);
 
-    const isFavorite = usePlayerStore(s => currentSong ? s.isFavorite(currentSong.id || (currentSong as any).videoId || '') : false);
+    const isFavorite = usePlayerStore(s => currentSong ? s.isFavorite(currentSong.id || currentSong.videoId || '') : false);
     const toggleFavorite = usePlayerStore(s => s.toggleFavorite);
     const addNext = usePlayerStore(s => s.addNext);
     const addToQueue = usePlayerStore(s => s.addToQueue);
     const sleepTimer = useSleepTimer();
 
-    // Active stage view for mobile: 'cover' (Artwork), 'lyrics' (Synced Lyrics)
-    const [activeStage, setActiveStage] = useState<'cover' | 'lyrics'>('cover');
     const [desktopTab, setDesktopTab] = useState<'lyrics' | 'queue' | 'player'>('lyrics');
     const [showVolumeSheet, setShowVolumeSheet] = useState(false);
     const [showSleepTimerSheet, setShowSleepTimerSheet] = useState(false);
@@ -90,22 +88,13 @@ export function NowPlayingPage() {
 
     const modalRef = useRef<HTMLDivElement>(null);
 
-    // Synchronize UI store panels if toggled via global shortcuts
+    // The global lyrics shortcut and the mobile stage share one toggle.
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
     const setLyricsOpen = useUIStore(s => s.setLyricsOpen);
-
-    useEffect(() => {
-        if (isLyricsOpen) setActiveStage('lyrics');
-        else setActiveStage('cover');
-    }, [isLyricsOpen]);
+    const activeStage = isLyricsOpen ? 'lyrics' : 'cover';
 
     const handleSwitchStage = (stage: 'cover' | 'lyrics') => {
-        setActiveStage(stage);
-        if (stage === 'lyrics') {
-            setLyricsOpen(true);
-        } else {
-            setLyricsOpen(false);
-        }
+        setLyricsOpen(stage === 'lyrics');
     };
 
     // Close modals and sheets on Escape
@@ -137,12 +126,12 @@ export function NowPlayingPage() {
         }
     };
 
-    const songId = (currentSong as any)?.videoId || currentSong?.id;
-    const title = (currentSong as any)?.name || currentSong?.title || 'Untitled track';
-    const artist = (currentSong as any)?.artist?.name || (currentSong as any)?.author || 'Unknown artist';
-    const album = (currentSong as any)?.album?.name;
+    const songId = currentSong?.videoId || currentSong?.id;
+    const title = currentSong?.name || currentSong?.title || 'Untitled track';
+    const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
+    const album = currentSong?.album?.name;
     const thumbnails = [...(currentSong?.thumbnails ?? [])].sort((a, b) => b.width - a.width);
-    const suppliedArt = thumbnails[0]?.url || (currentSong as any)?.img;
+    const suppliedArt = thumbnails[0]?.url || currentSong?.img;
     // YouTube Music often supplies square covers with a small CDN size preset.
     const fullSizeCover = suppliedArt?.replace(
         /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
@@ -155,7 +144,7 @@ export function NowPlayingPage() {
         ...thumbnails.map(thumbnail => thumbnail.url),
         suppliedArt,
         songId ? `https://i.ytimg.com/vi/${songId}/hqdefault.jpg` : '',
-    ].filter(Boolean))];
+    ].filter((url): url is string => !!url))];
     const artworkKey = JSON.stringify([songId, artworkUrls]);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
     const art = artworkUrls[artworkIndex];

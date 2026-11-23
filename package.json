@@ -8,7 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "test:ui": "node --test scripts/ui-regressions.test.mjs",
+    "test:ui": "node --test scripts/ui-regressions.test.mjs scripts/catalog-list.test.mjs",
+    "test:catalog": "node --test scripts/catalog-worker.test.mjs",
+    "test:netlify": "node --test scripts/netlify-fallback.test.mjs",
+    "test:android": "cd android && ./gradlew test",
+    "test": "pnpm test:ui && pnpm test:catalog && pnpm test:netlify && pnpm test:android",
     "lint": "eslint .",
     "android:build": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
     "android:update": "bash scripts/android-update.sh"

@@ -12,6 +12,12 @@ Capacitor loads the same React UI as the browser from bundled assets. [`capacito
 
 ## Build and verify
 
-Install the prerequisites in [setup](SETUP.md), then run `pnpm android:build`. The command builds the web app, syncs Capacitor, and runs Gradle’s `assembleDebug`. The APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. The [GitHub Actions workflow](../.github/workflows/build-apk.yml) uploads a debug APK artifact; it does not publish a release.
+Install the prerequisites in [setup](SETUP.md), then run `pnpm android:build`. The command builds the web app, syncs Capacitor, and runs Gradle’s `assembleDebug`. The APK is at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 On a device, check search from the packaged WebView, audible playback and seeking, background/lock-screen controls, and queue changes after returning to the app. Search failures point first to the built-in API URL or API reachability. If search succeeds but audio fails, distinguish stream resolution, media URL loading, and native service errors. A browser smoke test does not exercise the Android bridge.
+
+## GitHub releases
+
+Increase `versionCode` and update `versionName` in `android/app/build.gradle`. Push the commit and a matching stable tag (`v` followed by `versionName`). [GitHub Actions](../.github/workflows/build-apk.yml) verifies and publishes `m14u.apk` on tag pushes; branch builds only upload debug artifacts.
+
+Keep a private backup of the release PKCS#12 keystore (alias `m14u`) and password. The signing step reads `APK_KEYSTORE_BASE64` and `APK_KEYSTORE_PASSWORD` from GitHub Actions secrets. Android requires the same signing key for subsequent in-place updates. A debug installation signed with a different key must be removed before installing the release, which deletes its local data.

@@ -70,7 +70,7 @@ export function SearchPage() {
     };
 
     const current = Boolean(term && searchedTerm === term);
-    const songs = current ? results.filter(r => r.type === 'song' || r.type === 'video') as TrackItem[] : [];
+    const songs = current ? results.filter((r): r is TrackItem => r.type === 'song' || r.type === 'video') : [];
     const pending = Boolean(term && (!current || loading));
     const failed = current && Boolean(error);
     const empty = current && !loading && !failed && songs.length === 0;
@@ -85,13 +85,7 @@ export function SearchPage() {
     };
 
     return (
-        <div
-            className="pb-8"
-            onKeyDown={(event) => {
-                // Keep native Space activation for search controls instead of playing music.
-                if (event.code === 'Space' && event.target instanceof HTMLButtonElement) event.stopPropagation();
-            }}
-        >
+        <div className="pb-8">
             <header className="sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur-md">
                 <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 md:px-8 md:py-5">
                     <h1 className="mb-2 font-heading text-xl font-bold tracking-tight md:mb-3 md:text-2xl">Search</h1>

@@ -11,14 +11,14 @@ Access via `window.m14u` in browser console.
 ## Search
 | Function | Description | Example |
 |---|---|---|
-| `search(query, filter?)` | Search, returns results | `await m14u.search('believer')` |
-| `suggest(query)` | Get suggestions | `await m14u.suggest('bel')` |
-| `clearSearch()` | Clear search state | `m14u.clearSearch()` |
+| `search(query, filter?)` | Return this request's results, or `[]` if canceled | `await m14u.search('believer')` |
+| `suggest(query)` | Return this request's suggestions, or `[]` if canceled | `await m14u.suggest('bel')` |
+| `clearSearch()` | Clear search state and cancel pending searches and suggestions | `m14u.clearSearch()` |
 
 ## Playback
 | Function | Description | Example |
 |---|---|---|
-| `play(songOrIndex?)` | Play by index, string search, or song object | `await m14u.play('believer')` |
+| `play(songOrIndex?)` | Play by index, string search, or song object. A canceled string search rejects without starting playback. | `await m14u.play('believer')` |
 | `pause()` | Pause playback | `m14u.pause()` |
 | `toggle()` | Toggle play/pause | `m14u.toggle()` |
 | `next()` | Next track | `m14u.next()` |

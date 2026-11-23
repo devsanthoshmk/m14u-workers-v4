@@ -6,7 +6,8 @@
  */
 
 import { usePlayerStore } from '@/stores/playerStore';
-import { getThumbnail, formatDuration } from '@/utils/format';
+import { getThumbnail } from '@/utils/format';
+import { toTrackItem } from '@/utils/trackMetadata';
 import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
@@ -19,14 +20,13 @@ interface SongCardProps {
 }
 
 export function SongCard({ song, onPlay }: SongCardProps) {
-    // Support both TrackItem and legacy Song - use any casting
-    const s = song as any;
-    const songId = s.videoId || s.id;
-    const songTitle = s.name || s.title;
-    const songArtist = s.artist?.name || s.author;
-    const songThumbnails = s.thumbnails;
-    const songImg = s.img;
-    const songDuration = s.duration;
+    const track = toTrackItem(song);
+    const songId = track.id;
+    const songTitle = track.name || track.title;
+    const songArtist = track.artist?.name || track.author;
+    const songThumbnails = track.thumbnails;
+    const songImg = track.img;
+    const songDuration = track.duration;
     
     const currentSong = usePlayerStore(s => s.currentSong);
     const isPlaying = usePlayerStore(s => s.isPlaying);
@@ -41,7 +41,7 @@ export function SongCard({ song, onPlay }: SongCardProps) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    const currentSongId = (currentSong as any)?.videoId || currentSong?.id;
+    const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
     const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 300) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
 
@@ -61,7 +61,7 @@ export function SongCard({ song, onPlay }: SongCardProps) {
         } else if (onPlay) {
             onPlay();
         } else {
-            playSong(song as TrackItem);
+            playSong(track);
         }
     };
 
@@ -83,7 +83,7 @@ export function SongCard({ song, onPlay }: SongCardProps) {
                 {/* Duration badge */}
                 {!!songDuration && (
                     <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/70 text-white/90 backdrop-blur-sm">
-                        {formatDuration(songDuration)}
+                        {songDuration}
                     </span>
                 )}
 
@@ -125,21 +125,21 @@ export function SongCard({ song, onPlay }: SongCardProps) {
                         className="absolute bottom-10 right-2 w-44 rounded-xl bg-popover border border-border shadow-2xl py-1 z-50 animate-fade-in"
                     >
                         <button
-                            onClick={() => { addNext(song as TrackItem); setShowMenu(false); }}
+                            onClick={() => { addNext(track); setShowMenu(false); }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
                         >
                             <ListPlus className="h-4 w-4 text-muted-foreground" />
                             Play next
                         </button>
                         <button
-                            onClick={() => { addToQueue(song as TrackItem); setShowMenu(false); }}
+                            onClick={() => { addToQueue(track); setShowMenu(false); }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
                         >
                             <ListEnd className="h-4 w-4 text-muted-foreground" />
                             Add to queue
                         </button>
                         <button
-                            onClick={() => { toggleFavorite(song as TrackItem); setShowMenu(false); }}
+                            onClick={() => { toggleFavorite(track); setShowMenu(false); }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
                         >
                             <Heart className={cn('h-4 w-4', isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground')} />

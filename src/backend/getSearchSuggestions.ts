@@ -1,15 +1,18 @@
 import { YTNodes } from 'youtubei.js';
 import { getClient } from './utils.js';
 
-export default async function(params: { q: string, music?: boolean }) {
+import type { ProviderBudget } from './providerBudget.js';
+
+export default async function(budget: ProviderBudget, params: { q: string, music?: boolean }) {
   const { q, music } = params;
-  const yt = await getClient();
+  const yt = await getClient(budget);
 
   if (music) {
     let suggestions;
     try {
       suggestions = await yt.music.getSearchSuggestions(q);
     } catch {
+      budget.markDegraded();
       return [];
     }
     return suggestions.first()?.contents
@@ -19,6 +22,7 @@ export default async function(params: { q: string, music?: boolean }) {
   try {
     return await yt.getSearchSuggestions(q);
   } catch {
+    budget.markDegraded();
     return [];
   }
 }

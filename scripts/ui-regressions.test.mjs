@@ -37,7 +37,22 @@ const server = await createServer({
 after(() => server.close());
 const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts');
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
+const { registerConsoleAPI } = await server.ssrLoadModule('/src/lib/testing/console-api.ts');
 const { trackArtworkUrls } = await server.ssrLoadModule('/src/utils/trackArtwork.ts');
+const { toTrackItem, trackDurationSeconds } = await server.ssrLoadModule('/src/utils/trackMetadata.ts');
+
+test('track metadata normalizes legacy IDs and preserves catalog duration labels', () => {
+    const legacy = { type: 'SONG', videoId: 'legacy', name: 'Track', artist: { name: 'Artist', artistId: 'artist' }, duration: 63 };
+    const track = toTrackItem(legacy);
+    assert.equal(track.id, 'legacy');
+    assert.equal(track.title, 'Track');
+    assert.equal(track.duration, '1:03');
+    assert.equal(trackDurationSeconds(track), 63);
+    const catalog = { type: 'song', id: 'catalog', duration: '1:02:03' };
+    assert.equal(toTrackItem(catalog), catalog);
+    assert.equal(trackDurationSeconds(catalog), 3723);
+    assert.equal(trackDurationSeconds({ ...catalog, duration: '2M views' }), undefined);
+});
 
 test('media artwork prefers a full-size cover and keeps fallbacks', () => {
     const img = 'https://lh3.googleusercontent.com/cover=w60-h60-l90-rj';
@@ -76,6 +91,84 @@ test('search ignores late success and failure, including after Clear', async (t)
     assert.deepEqual(state().results, []);
     assert.equal(state().isLoading, false);
 });
+
+test('suggestions ignore stale failures and responses after Clear', async (t) => {
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', () => new Promise((resolve, reject) => requests.push({ resolve, reject })));
+    const state = useSearchStore.getState;
+    const stale = state().getSuggestions('a');
+    const latest = state().getSuggestions('ab');
+    requests[1].resolve(Response.json(['abc']));
+    await latest;
+    requests[0].reject(new Error('old request failed'));
+    await stale;
+    assert.deepEqual(state().suggestions, ['abc']);
+    const cleared = state().getSuggestions('abc');
+    state().clearSearch();
+    requests[2].resolve(Response.json(['abcd']));
+    await cleared;
+    assert.deepEqual(state().suggestions, []);
+});
+
+test('console play uses only its own current search results across overlaps and Clear', async (t) => {
+    globalThis.window = {};
+    t.after(() => { delete globalThis.window; });
+    registerConsoleAPI();
+    const api = window.m14u;
+    const played = [];
+    t.mock.method(player(), 'playSong', async track => { played.push(track.id); });
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', () => new Promise(resolve => requests.push(resolve)));
+
+    const old = api.play('same query');
+    const oldRejected = assert.rejects(old, /play: no song found for "same query"/);
+    const latest = api.play('same query');
+    requests[1](Response.json([{ type: 'album', id: 'album' }, tracks[1]]));
+    await latest;
+    requests[0](Response.json([tracks[0]]));
+    await oldRejected;
+    assert.deepEqual(played, ['B']);
+
+    const cleared = api.play('clear me');
+    const clearedRejected = assert.rejects(cleared, /play: no song found for "clear me"/);
+    api.clearSearch();
+    const fresh = api.search('fresh');
+    requests[3](Response.json([tracks[2]]));
+    await fresh;
+    requests[2](Response.json([tracks[0]]));
+    await clearedRejected;
+    assert.deepEqual(played, ['B']);
+    assert.deepEqual(useSearchStore.getState().results, [tracks[2]]);
+});
+
+for (const [command, payload, expected] of [
+    ['search', [tracks[1]], [{ id: 'B', title: 'B', author: undefined, duration: undefined }]],
+    ['suggest', ['latest suggestion'], ['latest suggestion']],
+]) {
+    test(`console ${command} returns only its own results across overlap and Clear`, async (t) => {
+        globalThis.window = {};
+        t.after(() => { delete globalThis.window; });
+        registerConsoleAPI();
+        const api = window.m14u;
+        const requests = [];
+        t.mock.method(globalThis, 'fetch', () => new Promise(resolve => requests.push(resolve)));
+
+        const stale = api[command]('same query');
+        const latest = api[command]('same query');
+        requests[1](Response.json(payload));
+        assert.deepEqual(await latest, expected);
+        requests[0](Response.json(payload));
+        assert.deepEqual(await stale, []);
+
+        const cleared = api[command]('clear me');
+        api.clearSearch();
+        const fresh = api[command]('fresh');
+        requests[3](Response.json(payload));
+        assert.deepEqual(await fresh, expected);
+        requests[2](Response.json(payload));
+        assert.deepEqual(await cleared, []);
+    });
+}
 
 test('Clear cancels pending stream resolution and permits a fresh selection', async () => {
     let complete;

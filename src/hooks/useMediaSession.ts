@@ -26,17 +26,16 @@ export function useMediaSession(): void {
         }
         if (typeof MediaMetadata === 'undefined') return;
 
-        // Handle both TrackItem and legacy Song
-        const songTitle = (currentSong as any).name || currentSong.title || '';
-        const songArtist = (currentSong as any).artist?.name || currentSong.author || '';
-        const songAlbum = (currentSong as any).album?.name || '';
-        const songThumbnails = (currentSong as any).thumbnails || [];
+        const songTitle = currentSong.name || currentSong.title || '';
+        const songArtist = currentSong.artist?.name || currentSong.author || '';
+        const songAlbum = currentSong.album?.name || '';
+        const songThumbnails = currentSong.thumbnails || [];
 
         navigator.mediaSession.metadata = new MediaMetadata({
             title: songTitle,
             artist: songArtist,
             album: songAlbum,
-            artwork: songThumbnails.map((t: any) => ({
+            artwork: songThumbnails.map(t => ({
                 src: t.url,
                 sizes: `${t.width}x${t.height}`,
                 type: 'image/jpeg',

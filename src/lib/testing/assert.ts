@@ -16,7 +16,7 @@ function fail(name: string, msg: string): never {
   throw new AssertionError(msg);
 }
 
-function pass(name: string, result?: any) {
+function pass(name: string, result?: string | number | boolean) {
   logEntry({ type: 'ASSERT', name, result: result ?? 'PASS' });
 }
 

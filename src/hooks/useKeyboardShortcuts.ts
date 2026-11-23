@@ -11,15 +11,14 @@ import { useUIStore } from '@/stores/uiStore';
 export function useKeyboardShortcuts(): void {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't fire shortcuts when typing in inputs
-            const target = e.target as HTMLElement;
-            if (
-                target.tagName === 'INPUT' ||
-                target.tagName === 'TEXTAREA' ||
-                target.isContentEditable
-            ) {
-                return;
-            }
+            if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+            const target = e.target;
+            if (target instanceof Element && (
+                (target instanceof HTMLElement && target.isContentEditable) ||
+                target.closest('input, textarea, select, [role="slider"]') ||
+                // Keep Space activation on focused buttons, including Radix controls.
+                (e.code === 'Space' && target.closest('button, [role="button"]'))
+            )) return;
 
             const store = usePlayerStore.getState();
             const uiStore = useUIStore.getState();

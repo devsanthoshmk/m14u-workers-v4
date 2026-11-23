@@ -5,7 +5,8 @@
 
 import { Play, Plus, Heart, ListPlus, MoreHorizontal } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
-import { getThumbnail, formatDuration } from '@/utils/format';
+import { getThumbnail } from '@/utils/format';
+import { toTrackItem } from '@/utils/trackMetadata';
 import { cn } from '@/lib/utils';
 import type { Song, TrackItem } from '@/types/music';
 import { useState, useRef, useEffect } from 'react';
@@ -18,15 +19,14 @@ interface SongRowProps {
 }
 
 export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowProps) {
-    // Support both TrackItem and legacy Song - use any casting
-    const s = song as any;
-    const songId = s.videoId || s.id;
-    const songTitle = s.name || s.title;
-    const songArtist = s.artist?.name || s.author;
-    const songAlbum = s.album?.name;
-    const songThumbnails = s.thumbnails;
-    const songImg = s.img;
-    const songDuration = s.duration;
+    const track = toTrackItem(song);
+    const songId = track.id;
+    const songTitle = track.name || track.title;
+    const songArtist = track.artist?.name || track.author;
+    const songAlbum = track.album?.name;
+    const songThumbnails = track.thumbnails;
+    const songImg = track.img;
+    const songDuration = track.duration;
     
     const playSong = usePlayerStore(s => s.playSong);
     const addToQueue = usePlayerStore(s => s.addToQueue);
@@ -35,7 +35,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
     const isFavorite = usePlayerStore(s => songId ? s.isFavorite(songId) : false);
     const currentSong = usePlayerStore(s => s.currentSong);
     const isPlaying = usePlayerStore(s => s.isPlaying);
-    const currentSongId = (currentSong as any)?.videoId || currentSong?.id;
+    const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
 
     const [showMenu, setShowMenu] = useState(false);
@@ -56,7 +56,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
         if (onPlay) {
             onPlay();
         } else {
-            playSong(song as TrackItem);
+            playSong(track);
         }
     };
 
@@ -114,7 +114,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                 aria-pressed={isFavorite}
                 onClick={(e) => {
                     e.stopPropagation();
-                    toggleFavorite(song as TrackItem);
+                    toggleFavorite(track);
                 }}
                 className={cn(
                     'grid size-10 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface focus-visible:outline-2 sm:size-11',
@@ -126,7 +126,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
 
             {/* Duration */}
             <span className="text-xs text-muted-foreground tabular-nums w-10 text-right hidden sm:block">
-                {songDuration ? formatDuration(songDuration) : song.duration}
+                {songDuration}
             </span>
 
             {/* More menu */}
@@ -147,13 +147,13 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
                 {showMenu && (
                     <div className="absolute right-0 top-full mt-1 w-48 rounded-xl bg-popover border border-border shadow-xl p-1 z-50 animate-fade-in">
                         <button
-                            onClick={(e) => { e.stopPropagation(); addNext(song as TrackItem); setShowMenu(false); }}
+                            onClick={(e) => { e.stopPropagation(); addNext(track); setShowMenu(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-hover transition-colors"
                         >
                             <ListPlus className="h-4 w-4 text-muted-foreground" /> Play next
                         </button>
                         <button
-                            onClick={(e) => { e.stopPropagation(); addToQueue(song as TrackItem); setShowMenu(false); }}
+                            onClick={(e) => { e.stopPropagation(); addToQueue(track); setShowMenu(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-hover transition-colors"
                         >
                             <Plus className="h-4 w-4 text-muted-foreground" /> Add to queue

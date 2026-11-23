@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { TrackItem, YTListItem } from '@/types/music';
+import { API_BASE_URL } from '@/utils/constants';
 
-const API_BASE = '/api';
+const API_BASE = `${API_BASE_URL.replace(/\/+$/, '')}/api`;
 
 interface ListState {
   currentList: {
@@ -13,6 +14,7 @@ interface ListState {
     author?: string;
     year?: string;
     albums?: YTListItem[];
+    hasContinuation?: boolean;
   } | null;
   isLoading: boolean;
   error: string | null;
@@ -25,123 +27,107 @@ interface ListState {
   clearList: () => void;
 }
 
-export const useListStore = create<ListState>((set) => ({
-  currentList: null,
-  isLoading: false,
-  error: null,
+type ListPayload = Pick<NonNullable<ListState['currentList']>, 'name' | 'img' | 'author' | 'year' | 'albums' | 'hasContinuation'> & {
+  items?: TrackItem[];
+  userArtists?: YTListItem[];
+  relatedArtists?: YTListItem[];
+  relatedPlaylists?: YTListItem[];
+};
 
-  loadAlbum: async (id: string) => {
+export const useListStore = create<ListState>((set) => {
+  let activeRequest: AbortController | undefined;
+
+  async function load(
+    kind: NonNullable<ListState['currentList']>['type'] | 'gallery',
+    query: string,
+    toList: (data: ListPayload) => NonNullable<ListState['currentList']>,
+  ) {
+    const previous = activeRequest;
+    const request = new AbortController();
+    activeRequest = request;
+    previous?.abort();
+    if (activeRequest !== request) return;
     set({ isLoading: true, error: null });
+    if (activeRequest !== request) return;
+
+    const failure = `Failed to load ${kind}`;
     try {
-      const res = await fetch(`${API_BASE}/album?id=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error('Failed to load album');
-      const data = await res.json();
-      set({ 
-        currentList: {
-          id,
-          name: data.name,
-          type: 'album',
-          items: data.items || [],
-          img: data.img,
-          author: data.author,
-          year: data.year
-        },
-        isLoading: false 
-      });
+      const res = await fetch(`${API_BASE}/${kind}?${query}`, { signal: request.signal });
+      if (!res.ok) throw new Error(failure);
+      const data: ListPayload = await res.json();
+      if (activeRequest !== request) return;
+      set({ currentList: toList(data), isLoading: false });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load album', isLoading: false });
+      if (activeRequest !== request) return;
+      set({ error: err instanceof Error ? err.message : failure, isLoading: false });
+    } finally {
+      if (activeRequest === request) activeRequest = undefined;
     }
-  },
+  }
 
-  loadArtist: async (id: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      const res = await fetch(`${API_BASE}/artist?id=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error('Failed to load artist');
-      const data = await res.json();
-      set({ 
-        currentList: {
-          id,
-          name: data.name,
-          type: 'artist',
-          items: data.items || [],
-          img: data.img,
-          albums: data.albums
-        },
-        isLoading: false 
-      });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load artist', isLoading: false });
-    }
-  },
+  return {
+    currentList: null,
+    isLoading: false,
+    error: null,
 
-  loadPlaylist: async (id: string, all?: boolean) => {
-    set({ isLoading: true, error: null });
-    try {
+    loadAlbum: (id) => load('album', `id=${encodeURIComponent(id)}`, (data) => ({
+      id,
+      name: data.name,
+      type: 'album',
+      items: data.items || [],
+      img: data.img,
+      author: data.author,
+      year: data.year,
+    })),
+
+    loadArtist: (id) => load('artist', `id=${encodeURIComponent(id)}`, (data) => ({
+      id,
+      name: data.name,
+      type: 'artist',
+      items: data.items || [],
+      img: data.img,
+      albums: data.albums,
+    })),
+
+    loadPlaylist: (id, all) => {
       const params = new URLSearchParams({ id });
       if (all) params.set('all', 'true');
-      const res = await fetch(`${API_BASE}/playlist?${params}`);
-      if (!res.ok) throw new Error('Failed to load playlist');
-      const data = await res.json();
-      set({ 
-        currentList: {
-          id,
-          name: data.name,
-          type: 'playlist',
-          items: data.items || [],
-          img: data.img,
-          author: data.author
-        },
-        isLoading: false 
-      });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load playlist', isLoading: false });
-    }
-  },
+      return load('playlist', params.toString(), (data) => ({
+        id,
+        name: data.name,
+        type: 'playlist',
+        items: data.items || [],
+        img: data.img,
+        author: data.author,
+        ...(typeof data.hasContinuation === 'boolean' ? { hasContinuation: data.hasContinuation } : {}),
+      }));
+    },
 
-  loadChannel: async (id: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      const res = await fetch(`${API_BASE}/channel?id=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error('Failed to load channel');
-      const data = await res.json();
-      set({ 
-        currentList: {
-          id,
-          name: data.name,
-          type: 'channel',
-          items: data.items || [],
-          img: data.img
-        },
-        isLoading: false 
-      });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load channel', isLoading: false });
-    }
-  },
+    loadChannel: (id) => load('channel', `id=${encodeURIComponent(id)}`, (data) => ({
+      id,
+      name: data.name,
+      type: 'channel',
+      items: data.items || [],
+      img: data.img,
+    })),
 
-  loadGallery: async (ids: string[]) => {
-    set({ isLoading: true, error: null });
-    try {
-      const res = await fetch(`${API_BASE}/gallery?id=${ids.join(',')}`);
-      if (!res.ok) throw new Error('Failed to load gallery');
-      await res.json(); // consume response
-      set({ 
-        currentList: {
-          id: 'gallery',
-          name: 'Your Library',
-          type: 'playlist',
-          items: [],
-          albums: []
-        },
-        isLoading: false 
-      });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load gallery', isLoading: false });
-    }
-  },
+    loadGallery: (ids) => load('gallery', `id=${ids.map(encodeURIComponent).join(',')}`, (data) => ({
+      id: 'gallery',
+      name: 'Your Library',
+      type: 'playlist',
+      items: [],
+      albums: [
+        ...(data.userArtists ?? []),
+        ...(data.relatedArtists ?? []),
+        ...(data.relatedPlaylists ?? []),
+      ],
+    })),
 
-  clearList: () => {
-    set({ currentList: null, error: null });
-  }
-}));
+    clearList: () => {
+      const previous = activeRequest;
+      activeRequest = undefined;
+      set({ currentList: null, error: null, isLoading: false });
+      previous?.abort();
+    },
+  };
+});

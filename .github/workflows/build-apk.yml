@@ -4,7 +4,12 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -13,35 +18,84 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10.28.1
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
+        cache: pnpm
 
     - name: Install dependencies
-      run: npm install
-
-    - name: Build Web App
-      run: npm run build
+      run: pnpm install --frozen-lockfile
 
     - name: Setup Java JDK
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'
+        java-version: '21'
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Sync Capacitor
-      run: npx cap sync android
+    - name: Run tests
+      run: |
+        pnpm lint
+        pnpm typecheck
+        pnpm test:ui
+        pnpm test:catalog
+        pnpm test:netlify
+        cd android && ./gradlew test
 
     - name: Build APK
-      run: cd android && ./gradlew assembleDebug
+      run: pnpm android:build
 
     - name: Upload APK
+      if: github.ref_type != 'tag'
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
+        if-no-files-found: error
+
+    - name: Build unsigned release APK
+      if: github.ref_type == 'tag'
+      run: cd android && ./gradlew :app:assembleRelease
+
+    - name: Sign and verify release APK
+      if: github.ref_type == 'tag'
+      env:
+        APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
+        APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
+      run: |
+        sdkmanager 'build-tools;37.0.0'
+        bash scripts/sign-android-release.sh "$GITHUB_REF_NAME"
+
+    - name: Upload signed APK
+      if: github.ref_type == 'tag'
+      uses: actions/upload-artifact@v4
+      with:
+        name: m14u-release
+        path: m14u.apk
+        if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: m14u-release
+    - name: Publish GitHub release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "$GITHUB_REF_NAME" m14u.apk --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes

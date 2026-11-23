@@ -1,6 +1,12 @@
-import { Context, Config } from '@netlify/edge-functions';
+import type { Config } from '@netlify/edge-functions';
 
-export default async (request: Request, _context: Context) => {
+type MusicSuggestionsResponse = {
+  contents?: { searchSuggestionsSectionRenderer?: { contents?: {
+    searchSuggestionRenderer?: { suggestion?: { runs?: { text?: string }[] } };
+  }[] } }[];
+};
+
+export default async (request: Request) => {
   const url = new URL(request.url);
   const q = url.searchParams.get('q');
   const music = url.searchParams.get('music') === 'true';
@@ -40,13 +46,14 @@ export default async (request: Request, _context: Context) => {
         })
       });
 
-      const data = await res.json();
+      if (!res.ok) throw new Error(`YouTube Music suggestions returned ${res.status}`);
+      const data = await res.json() as MusicSuggestionsResponse;
 
       // Parse YTMUSIC response
-      const suggestions = data.contents?.[0]?.searchSuggestionsSectionRenderer?.contents?.map((s: any) => {
+      const suggestions = data.contents?.[0]?.searchSuggestionsSectionRenderer?.contents?.map(s => {
         const renderer = s.searchSuggestionRenderer;
         if (!renderer) return null;
-        return renderer.suggestion?.runs?.map((r: any) => r.text).join('') || null;
+        return renderer.suggestion?.runs?.map(r => r.text).join('') || null;
       }).filter(Boolean) || [];
 
       return new Response(JSON.stringify(suggestions), {
@@ -67,12 +74,15 @@ export default async (request: Request, _context: Context) => {
       suggestUrl.searchParams.set('q', q);
 
       const res = await fetch(suggestUrl.toString());
+      if (!res.ok) throw new Error(`YouTube suggestions returned ${res.status}`);
       const text = await res.text();
 
       // youtubei.js parses window.google.ac.h(...)
       const jsonText = text.replace('window.google.ac.h(', '').slice(0, -1);
-      const data = JSON.parse(jsonText);
-      const suggestions = data[1].map((s: any) => s[0]);
+      const data: unknown = JSON.parse(jsonText);
+      if (!Array.isArray(data) || !Array.isArray(data[1])) throw new Error('Invalid suggestions response');
+      const suggestions = data[1].flatMap((entry: unknown) =>
+        Array.isArray(entry) && typeof entry[0] === 'string' ? [entry[0]] : []);
 
       return new Response(JSON.stringify(suggestions), {
         headers: cacheHeaders,

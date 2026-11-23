@@ -46,22 +46,17 @@ class OkHttpDownloader : Downloader() {
             httpMethod == "GET" -> requestBuilder.get()
             httpMethod == "HEAD" -> requestBuilder.head()
             httpMethod == "DELETE" -> requestBuilder.delete()
+            else -> throw IllegalArgumentException("Unsupported extractor request method: $httpMethod")
         }
 
-        val response = client.newCall(requestBuilder.build()).execute()
-
-        val responseBody = response.body?.string()
-        val responseHeaders = mutableMapOf<String, List<String>>()
-        for (name in response.headers.names()) {
-            responseHeaders[name] = response.headers.values(name)
+        return client.newCall(requestBuilder.build()).execute().use { response ->
+            Response(
+                response.code,
+                response.message,
+                response.headers.names().associateWith { response.headers.values(it) },
+                response.body?.string(),
+                response.request.url.toString()
+            )
         }
-
-        return Response(
-            response.code,
-            response.message,
-            responseHeaders,
-            responseBody,
-            response.request.url.toString()
-        )
     }
 }

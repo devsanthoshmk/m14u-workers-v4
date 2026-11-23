@@ -1,19 +1,21 @@
 import { YTNodes } from 'youtubei.js';
 import { getClient, formatDuration, parsePublished } from './utils.js';
+import { MAX_BATCH_IDS, type ProviderBudget } from './providerBudget.js';
 
-export default async function(ids: string[]) {
-  const yt = await getClient();
+export default async function(budget: ProviderBudget, ids: string[]) {
+  const yt = await getClient(budget);
 
-  const results = await Promise.all(
-    ids.map(id =>
-      yt.getChannel(id)
-        .then(channel => channel.getVideos().then(v => ({ 
-          author: channel.metadata.title?.toString() || '', 
-          authorId: id,
-          videos: v.videos 
-        })))
-        .catch(() => ({ author: '', authorId: id, videos: [] }))
-    )
+  const results = await budget.map(ids.slice(0, MAX_BATCH_IDS), id =>
+    yt.getChannel(id)
+      .then(channel => channel.getVideos().then(v => ({
+        author: channel.metadata.title?.toString() || '',
+        authorId: id,
+        videos: v.videos
+      })))
+      .catch(() => {
+        budget.markDegraded();
+        return { author: '', authorId: id, videos: [] };
+      })
   );
 
   const allVideos = results.flatMap(r =>

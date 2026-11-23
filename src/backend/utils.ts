@@ -1,25 +1,24 @@
 import { Innertube, UniversalCache, YTNodes, type Helpers, Log } from 'youtubei.js';
 import type { YTItem, YTListItem } from '@/types/music';
+import type { ProviderBudget } from './providerBudget.js';
 
 // Suppress youtubei.js warning logs (set to ERROR level to hide warnings)
 Log.setLevel(Log.Level.ERROR);
 
-let youtube: Innertube | null = null;
+export function getClient(budget: ProviderBudget): Promise<Innertube> {
+  // Session setup can perform I/O. Keep its client and cache in this request.
+  return Innertube.create({
+    cache: new UniversalCache(false),
+    generate_session_locally: true,
+    retrieve_player: false,
+    fetch: budget.fetch
+  });
+}
 
-export async function getClient(): Promise<Innertube> {
-  console.log('[getClient] Getting Innertube client...');
-  if (!youtube) {
-    console.log('[getClient] Creating new Innertube instance...');
-    youtube = await Innertube.create({
-      cache: new UniversalCache(false),
-      generate_session_locally: true,
-      retrieve_player: false,
-      fetch: fetch.bind(globalThis)
-    });
-    console.log('[getClient] Created Innertube instance');
-  }
-
-  return youtube;
+export function stringField(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const field: unknown = Reflect.get(value, key);
+  return typeof field === 'string' ? field : undefined;
 }
 
 export function getThumbnailId(url?: string): string {
@@ -41,7 +40,7 @@ export function getThumbnailId(url?: string): string {
     const last = segments[segments.length - 1] || "";
     const secondLast = segments[segments.length - 2] || "";
 
-    let id = last.split(/[=]/)[0]; // Strip sizing params (=w544 etc)
+    const id = last.split('=')[0];
 
     if (secondLast.startsWith('a-') || secondLast === '-a') {
       return `${secondLast}/${id}`;
@@ -53,7 +52,7 @@ export function getThumbnailId(url?: string): string {
     }
 
     return id;
-  } catch (e) {
+  } catch {
     return fullUrl.split('/').pop()?.split('=')[0] || "";
   }
 }
@@ -85,7 +84,7 @@ export function parsePublished(text: string): number {
 
 export function getThumbnail(thumbnails: { url: string, width: number }[]): string {
   if (!thumbnails || thumbnails.length === 0) return '';
-  return thumbnails.sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.url || '';
+  return thumbnails.reduce((best, next) => (next.width || 0) > (best.width || 0) ? next : best).url || '';
 }
 
 export function streamMapper(node: Helpers.YTNode): YTItem | null {
@@ -117,10 +116,10 @@ export function streamMapper(node: Helpers.YTNode): YTItem | null {
     const subtext = (album || '') + (views ? (album ? ' • ' : '') + views : '');
 
     // Try to get playlistId (OLAK...) from menu items for the albumId field
-    const playlistId = song.menu?.items?.find((i: any) =>
-      i.is(YTNodes.MenuNavigationItem) &&
-      i.as(YTNodes.MenuNavigationItem).endpoint?.payload?.playlistId?.startsWith('OLAK')
-    )?.as(YTNodes.MenuNavigationItem).endpoint?.payload?.playlistId || song.album?.id || "";
+    const playlistId = song.menu?.items
+      ?.filterType(YTNodes.MenuNavigationItem)
+      .map(i => stringField(i.endpoint?.payload, 'playlistId'))
+      .find(id => id?.startsWith('OLAK')) || song.album?.id || "";
 
     return {
       id: song.id || "",
@@ -205,7 +204,7 @@ export function listMapper(node: Helpers.YTNode): YTListItem | null {
 
     if (type === 'artist') {
       const subscribers = item.subscribers ||
-        item.subtitle?.runs?.find((r: any) => r.text && r.text.includes('subscribers'))?.text ||
+        item.subtitle?.runs?.find(r => r.text?.includes('subscribers'))?.text ||
         "";
       return {
         id: item.id || "",
@@ -217,12 +216,13 @@ export function listMapper(node: Helpers.YTNode): YTListItem | null {
     }
 
     if (type === 'album') {
-      const pId = (item.overlay?.content?.is(YTNodes.MusicItemThumbnailOverlay) ? (item.overlay.content as any).endpoint?.payload?.playlistId : undefined) ||
-        item.menu?.items?.find((i: any) => i.is(YTNodes.MenuNavigationItem) && i.as(YTNodes.MenuNavigationItem).endpoint?.payload?.playlistId)?.as(YTNodes.MenuNavigationItem).endpoint?.payload?.playlistId ||
+      const pId = stringField(item.overlay?.content?.endpoint?.payload, 'playlistId') ||
+        item.menu?.items?.filterType(YTNodes.MenuNavigationItem)
+          .map(i => stringField(i.endpoint?.payload, 'playlistId')).find(Boolean) ||
         "";
       const artistName = item.author?.name ||
         item.artists?.[0]?.name ||
-        item.subtitle?.runs?.find((r: any) => r.endpoint?.payload?.browseId?.startsWith('UC'))?.text ||
+        item.subtitle?.runs?.find(r => 'endpoint' in r && stringField(r.endpoint?.payload, 'browseId')?.startsWith('UC'))?.text ||
         "Unknown Artist";
 
       return {
@@ -230,7 +230,7 @@ export function listMapper(node: Helpers.YTNode): YTListItem | null {
         name: item.title || item.name || "Unknown",
         playlistId: pId,
         author: artistName,
-        year: item.year || item.subtitle?.runs?.find((r: any) => r.text && /^\d{4}$/.test(r.text))?.text || "",
+        year: item.year || item.subtitle?.runs?.find(r => r.text && /^\d{4}$/.test(r.text))?.text || "",
         img: getThumbnail(item.thumbnail?.contents || []),
         type: 'album'
       };

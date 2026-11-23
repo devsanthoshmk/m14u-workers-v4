@@ -1,9 +1,10 @@
 import { YTNodes, type Helpers } from 'youtubei.js';
 import { getClient, getThumbnail, formatDuration } from './utils.js';
 import type { YTPlaylistItem, YTItem } from '@/types/music';
+import { MAX_PLAYLIST_CONTINUATIONS, type ProviderBudget } from './providerBudget.js';
 
-export default async function(id: string, all?: boolean): Promise<YTPlaylistItem> {
-  const yt = await getClient();
+export default async function(budget: ProviderBudget, id: string, all?: boolean): Promise<YTPlaylistItem> {
+  const yt = await getClient(budget);
   let playlist = await yt.getPlaylist(id);
 
   const { info } = playlist;
@@ -34,7 +35,9 @@ export default async function(id: string, all?: boolean): Promise<YTPlaylistItem
   mapItems(playlist.items);
 
   if (all) {
-    while (playlist.has_continuation) {
+    // Return the accumulated prefix and let hasContinuation signal truncation.
+    for (let page = 0; page < MAX_PLAYLIST_CONTINUATIONS && playlist.has_continuation; page++) {
+      budget.checkDeadline();
       playlist = await playlist.getContinuation();
       mapItems(playlist.items);
     }

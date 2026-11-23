@@ -26,6 +26,7 @@ class NativePlaybackPlugin : Plugin() {
     private val main = Handler(Looper.getMainLooper())
     private var connection: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
+    private var destroyed = false
     private var lastPauseWasEndOfItem = false
     private val ticker = object : Runnable {
         override fun run() {
@@ -36,11 +37,18 @@ class NativePlaybackPlugin : Plugin() {
 
     private fun withController(call: PluginCall, action: (MediaController) -> Unit) {
         main.post {
+            if (destroyed) {
+                call.reject("Android playback bridge closed")
+                return@post
+            }
             val future = connection ?: MediaController.Builder(context,
                 SessionToken(context, ComponentName(context, PlaybackService::class.java)))
                 .buildAsync().also { connection = it }
             future.addListener({
-                if (connection !== future) return@addListener
+                if (connection !== future) {
+                    call.reject("Android playback connection closed")
+                    return@addListener
+                }
                 try {
                     val player = future.get()
                     if (controller !== player) {
@@ -151,10 +159,12 @@ class NativePlaybackPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        destroyed = true
         main.removeCallbacks(ticker)
-        connection?.let { MediaController.releaseFuture(it) }
+        val future = connection
         connection = null
         controller = null
+        future?.let { MediaController.releaseFuture(it) }
         super.handleOnDestroy()
     }
 }

@@ -1,8 +1,10 @@
 import { YTNodes } from 'youtubei.js';
 import { getClient, getThumbnail, formatDuration } from './utils.js';
 
-export default async function(id: string) {
-  const yt = await getClient();
+import type { ProviderBudget } from './providerBudget.js';
+
+export default async function(budget: ProviderBudget, id: string) {
+  const yt = await getClient(budget);
   const channel = await yt.getChannel(id);
   const metadata = channel.metadata;
   const videoTab = await channel.getVideos();

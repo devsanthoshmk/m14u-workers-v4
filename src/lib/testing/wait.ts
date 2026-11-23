@@ -1,7 +1,7 @@
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSearchStore } from '@/lib/stores/search';
 import { routerRef } from './router-ref';
-import { logEntry } from './logger';
+import { errorMessage, logEntry } from './logger';
 
 class TimeoutError extends Error {
   constructor(label: string, timeoutMs: number) {
@@ -16,7 +16,15 @@ function poll(predicate: () => boolean, label: string, timeout = 10000, interval
 
   return new Promise<void>((resolve, reject) => {
     const check = () => {
-      if (predicate()) {
+      let ready: boolean;
+      try {
+        ready = predicate();
+      } catch (error) {
+        logEntry({ type: 'ERROR', name: `wait.${label}`, error: errorMessage(error), duration: Date.now() - start });
+        reject(error);
+        return;
+      }
+      if (ready) {
         logEntry({ type: 'WAIT', name: `wait.${label}.resolved`, duration: Date.now() - start });
         resolve();
       } else if (Date.now() - start >= timeout) {

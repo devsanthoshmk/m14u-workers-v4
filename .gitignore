@@ -24,5 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+/cookies-youtube-com.txt
+/m14u.apk
 .openchamber
 .agent

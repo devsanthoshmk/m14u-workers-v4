@@ -58,11 +58,11 @@ export function PlayerBar() {
     if (!currentSong) return null;
 
     // Handle both TrackItem and legacy Song types
-    const songId = (currentSong as any).videoId || currentSong.id;
-    const songTitle = (currentSong as any).name || currentSong.title;
-    const songArtist = (currentSong as any).artist?.name || currentSong.author;
-    const songThumbnails = (currentSong as any).thumbnails;
-    const songImg = (currentSong as any).img;
+    const songId = currentSong.videoId || currentSong.id;
+    const songTitle = currentSong.name || currentSong.title;
+    const songArtist = currentSong.artist?.name || currentSong.author;
+    const songThumbnails = currentSong.thumbnails;
+    const songImg = currentSong.img;
 
     const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 120) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
     const isFavorite = songId ? usePlayerStore.getState().isFavorite(songId) : false;

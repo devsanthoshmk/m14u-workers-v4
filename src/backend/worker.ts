@@ -7,36 +7,28 @@ import getSearch from './getSearch.js';
 import getSearchSuggestions from './getSearchSuggestions.js';
 import getSimilar from './getSimilar.js';
 import getSubFeed from './getSubFeed.js';
-import type { Request, ExecutionContext } from '@cloudflare/workers-types';
-
-const ALLOWED_ORIGINS = [
-  '*'
-];
+import { ProviderBudget, ProviderTimeout } from './providerBudget.js';
+import type { Request } from '@cloudflare/workers-types';
 
 export interface Env {
-  // Add any environment variables here if needed
+  LASTFM_API_KEY?: string;
 }
+
+class InvalidCatalogRequest extends Error {}
 
 export default {
   async fetch(
-    request: Request,
-    _env: Env,
-    _ctx: ExecutionContext
+    request: Pick<Request, 'url' | 'method'>,
+    env?: Env
   ): Promise<Response> {
     const url = new URL(request.url);
-    const origin = request.headers.get('Origin');
-    const allowedOrigin = ALLOWED_ORIGINS.includes('*') ? '*' : 
-      (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0] || '';
-
-    const corsHeaders: Record<string, string> = {
-      'Access-Control-Allow-Origin': allowedOrigin,
+    // The catalog is public and shared by the web app and packaged WebView.
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400',
     };
-    if (allowedOrigin !== '*') {
-      corsHeaders['Vary'] = 'Origin';
-    }
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -47,70 +39,69 @@ export default {
 
     const path = url.pathname.replace(/^\/api\//, '').replace(/^\//, '');
     const searchParams = url.searchParams;
+    const budget = new ProviderBudget();
 
     try {
-      console.log('[Worker] Processing request for path:', path, 'params:', Object.fromEntries(searchParams.entries()));
-      
       let data: unknown;
 
       switch (path) {
         case 'album': {
           const id = searchParams.get('id');
-          if (!id) throw new Error('Missing id parameter');
-          data = await getAlbum(id);
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getAlbum(budget, id);
           break;
         }
         case 'artist': {
           const id = searchParams.get('id');
-          if (!id) throw new Error('Missing id parameter');
-          data = await getArtist(id);
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getArtist(budget, id);
           break;
         }
         case 'channel': {
           const id = searchParams.get('id');
-          if (!id) throw new Error('Missing id parameter');
-          data = await getChannel(id);
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getChannel(budget, id);
           break;
         }
         case 'gallery': {
           const id = searchParams.get('id');
-          if (!id) throw new Error('Missing id parameter');
-          data = await getGallery(id.split(','));
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getGallery(budget, id.split(','));
           break;
         }
         case 'playlist': {
           const id = searchParams.get('id');
           const all = searchParams.get('all') === 'true';
-          if (!id) throw new Error('Missing id parameter');
-          data = await getPlaylist(id, all);
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getPlaylist(budget, id, all);
           break;
         }
         case 'search': {
           const q = searchParams.get('q');
           const f = searchParams.get('f');
-          if (!q) throw new Error('Missing q parameter');
-          data = await getSearch({ q, f: f || undefined });
+          if (!q) throw new InvalidCatalogRequest('Missing q parameter');
+          data = await getSearch(budget, { q, f: f || undefined });
           break;
         }
         case 'search-suggestions': {
           const q = searchParams.get('q');
           const music = searchParams.get('music') === 'true';
-          if (!q) throw new Error('Missing q parameter');
-          data = await getSearchSuggestions({ q, music });
+          if (!q) throw new InvalidCatalogRequest('Missing q parameter');
+          data = await getSearchSuggestions(budget, { q, music });
           break;
         }
         case 'similar': {
           const title = searchParams.get('title');
           const artist = searchParams.get('artist');
           const limit = searchParams.get('limit');
-          if (!title || !artist) throw new Error('Missing title or artist parameter');
-          data = await getSimilar({ title, artist, limit: limit || undefined });
+          if (!title || !artist) throw new InvalidCatalogRequest('Missing title or artist parameter');
+          data = await getSimilar(budget, { title, artist, limit: limit || undefined }, env?.LASTFM_API_KEY);
           break;
         }
         case 'subfeed': {
           const id = searchParams.get('id');
-          if (!id) throw new Error('Missing id parameter');
-          data = await getSubFeed(id.split(','));
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await getSubFeed(budget, id.split(','));
           break;
         }
         default:
@@ -120,22 +111,26 @@ export default {
           });
       }
 
-      console.log('[Worker] Returning data:', data);
-      
+      budget.checkDeadline();
       return new Response(JSON.stringify(data), {
         status: 200,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',
-          'Cache-Control': 's-maxage=86400, stale-while-revalidate=3600'
+          // Preserve fallback payloads without letting transient failures stick in cache.
+          'Cache-Control': budget.cacheable ? 's-maxage=86400, stale-while-revalidate=3600' : 'no-store'
         }
       });
     } catch (err) {
-      console.error('[Worker] Error:', err);
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const invalid = err instanceof InvalidCatalogRequest;
+      const timeout = budget.expired || err instanceof ProviderTimeout ||
+        (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError'));
+      const status = invalid ? 400 : timeout ? 504 : 500;
+      const message = invalid ? err.message : timeout ? 'Catalog provider timed out' : 'Catalog operation failed';
+      if (!invalid) console.error({ event: 'catalog_request_failed', route: path, status });
       return new Response(JSON.stringify({ error: message }), {
-        status: message.startsWith('Missing') ? 400 : 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
       });
     }
   }

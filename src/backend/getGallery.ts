@@ -1,8 +1,9 @@
 import { Helpers, YTNodes, type Innertube } from 'youtubei.js';
 import { getClient, getThumbnail } from './utils.js';
 import type { YTListItem } from '@/types/music';
+import { MAX_BATCH_IDS, type ProviderBudget } from './providerBudget.js';
 
-async function fetchFullArtistData(yt: Innertube, id: string) {
+async function fetchFullArtistData(budget: ProviderBudget, yt: Innertube, id: string) {
   try {
     const artist = await yt.music.getArtist(id);
     let title = '';
@@ -79,48 +80,44 @@ async function fetchFullArtistData(yt: Innertube, id: string) {
       featuredOnPlaylists,
       recommendedArtists
     };
-  } catch (e) {
-    console.error(`Failed to fetch artist ${id}`, e);
+  } catch {
+    budget.markDegraded();
+    console.warn('Catalog gallery artist lookup failed');
     return null;
   }
 }
 
-export default async function(ids: string[]) {
-  const yt = await getClient();
-  const results = (await Promise.all(ids.map(id => fetchFullArtistData(yt, id)))).filter((r): r is NonNullable<typeof r> => r !== null);
+export default async function(budget: ProviderBudget, ids: string[]) {
+  const yt = await getClient(budget);
+  const results = (await budget.map(ids.slice(0, MAX_BATCH_IDS), id => fetchFullArtistData(budget, yt, id)))
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
-  const recommendedArtistMap: Record<string, YTListItem & { count: number }> = {};
-  const relatedPlaylistMap: Record<string, YTListItem & { count: number }> = {};
+  // Keep ranking state outside the public list items; upstream IDs are keys.
+  type RankedItem = { item: YTListItem; count: number };
+  const recommendedArtistMap = new Map<string, RankedItem>();
+  const relatedPlaylistMap = new Map<string, RankedItem>();
+  const selectedIds = new Set(ids);
+
+  function add(map: Map<string, RankedItem>, item: YTListItem) {
+    const entry = map.get(item.id);
+    if (entry) entry.count++;
+    else map.set(item.id, { item, count: 1 });
+  }
 
   for (const result of results) {
     result.recommendedArtists.forEach((artist) => {
-      if (!ids.includes(artist.id)) {
-        if (recommendedArtistMap[artist.id]) {
-          recommendedArtistMap[artist.id].count++;
-        } else {
-          recommendedArtistMap[artist.id] = { ...artist, count: 1 };
-        }
-      }
+      if (!selectedIds.has(artist.id)) add(recommendedArtistMap, artist);
     });
 
     result.featuredOnPlaylists.forEach((playlist) => {
-      if (relatedPlaylistMap[playlist.id]) {
-        relatedPlaylistMap[playlist.id].count++;
-      } else {
-        relatedPlaylistMap[playlist.id] = { ...playlist, count: 1 };
-      }
+      add(relatedPlaylistMap, playlist);
     });
   }
 
-  const relatedArtists = Object.values(recommendedArtistMap)
-    .filter(a => a.count > 1)
+  const relatedItems = (map: Map<string, RankedItem>) => [...map.values()]
+    .filter(entry => entry.count > 1)
     .sort((a, b) => b.count - a.count)
-    .map(({ count, ...artist }) => artist);
-
-  const relatedPlaylists = Object.values(relatedPlaylistMap)
-    .filter(p => p.count > 1)
-    .sort((a, b) => b.count - a.count)
-    .map(({ count, ...playlist }) => playlist);
+    .map(entry => entry.item);
 
   const userArtists = results.map(r => ({
     id: r.id,
@@ -131,7 +128,7 @@ export default async function(ids: string[]) {
 
   return {
     userArtists,
-    relatedArtists,
-    relatedPlaylists
+    relatedArtists: relatedItems(recommendedArtistMap),
+    relatedPlaylists: relatedItems(relatedPlaylistMap)
   };
 }

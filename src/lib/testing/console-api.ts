@@ -1,9 +1,10 @@
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
-import { useSearchStore } from '@/lib/stores/search';
+import { getSuggestionsWithResults, searchWithResults, useSearchStore } from '@/lib/stores/search';
 import { useListStore } from '@/lib/stores/list';
+import type { TrackItem } from '@/types/music';
 import { routerRef } from './router-ref';
-import { logEntry, logger, onErrorEntry, type LogEntry } from './logger';
+import { errorMessage, logEntry, logger, onErrorEntry, type LogEntry } from './logger';
 import { wait } from './wait';
 import { assert } from './assert';
 import { highlight, highlightButton, clearHighlights } from './highlight';
@@ -14,40 +15,43 @@ const search = () => useSearchStore.getState();
 const list = () => useListStore.getState();
 
 let _lastError: LogEntry | null = null;
-const _errorCallbacks: Array<(e: LogEntry) => void> = [];
 
 onErrorEntry((entry) => {
   _lastError = entry;
-  _errorCallbacks.forEach(fn => fn(entry));
 });
 
-function act<T>(name: string, fn: () => T, payload?: any): T {
+function act<T>(name: string, fn: () => T, payload?: unknown): T {
   const start = Date.now();
   try {
     const result = fn();
     logEntry({ type: 'ACTION', name, payload, result: result ?? 'ok', duration: Date.now() - start });
     return result;
-  } catch (e: any) {
-    logEntry({ type: 'ERROR', name, payload, error: e.message, duration: Date.now() - start });
+  } catch (e) {
+    logEntry({ type: 'ERROR', name, payload, error: errorMessage(e), duration: Date.now() - start });
     throw e;
   }
 }
 
-async function actAsync<T>(name: string, fn: () => Promise<T>, payload?: any): Promise<T> {
+async function actAsync<T>(name: string, fn: () => Promise<T>, payload?: unknown): Promise<T> {
   const start = Date.now();
   try {
     const result = await fn();
     logEntry({ type: 'ACTION', name, payload, result: result ?? 'ok', duration: Date.now() - start });
     return result;
-  } catch (e: any) {
-    logEntry({ type: 'ERROR', name, payload, error: e.message, duration: Date.now() - start });
+  } catch (e) {
+    logEntry({ type: 'ERROR', name, payload, error: errorMessage(e), duration: Date.now() - start });
     throw e;
   }
 }
 
-function simpleSong(s: any) {
+// Both tracks and list results pass through this display-only projection.
+function simpleSong(s: Partial<Pick<TrackItem, 'id' | 'videoId' | 'title' | 'name' | 'author' | 'artist' | 'duration'>> | null) {
   if (!s) return null;
   return { id: s.id || s.videoId, title: s.title || s.name, author: s.author || s.artist?.name, duration: s.duration };
+}
+
+function isQueueIndex(index: number, length: number) {
+  return Number.isInteger(index) && index >= 0 && index < length;
 }
 
 function simpleQueue() {
@@ -76,58 +80,57 @@ const api = {
   // --- Search ---
   async search(query: string, filter?: string) {
     return actAsync('search', async () => {
-      await search().search(query, filter);
-      return useSearchStore.getState().results.map(simpleSong);
+      const results = await searchWithResults(query, filter);
+      return results?.map(simpleSong) ?? [];
     }, { query, filter });
   },
   async suggest(query: string) {
-    return actAsync('suggest', async () => {
-      await search().getSuggestions(query);
-      return useSearchStore.getState().suggestions;
-    }, query);
+    return actAsync('suggest', async () => (await getSuggestionsWithResults(query)) ?? [], query);
   },
   clearSearch() {
     return act('clearSearch', () => search().clearSearch());
   },
 
   // --- Playback ---
-  async play(songOrIndex?: any) {
+  async play(songOrIndex?: TrackItem | number | string) {
     return actAsync('play', async () => {
       if (songOrIndex === undefined) {
-        player().togglePlay();
+        await player().togglePlay();
         return;
       }
       if (typeof songOrIndex === 'number') {
         const q = player().queue;
-        if (songOrIndex < 0 || songOrIndex >= q.length)
+        if (!isQueueIndex(songOrIndex, q.length))
           throw new Error(`play: queue index ${songOrIndex} out of range (queue length: ${q.length})`);
-        player().playFromQueue(songOrIndex);
+        await player().playFromQueue(songOrIndex);
         return;
       }
       if (typeof songOrIndex === 'string') {
-        await search().search(songOrIndex);
-        const results = useSearchStore.getState().results;
-        const track = results.find((r: any) => r.type === 'song' || r.type === 'video');
+        const results = await searchWithResults(songOrIndex);
+        // A newer search or Clear may have replaced these results before this continuation ran.
+        const track = results && results === search().results
+          ? results.find((r): r is TrackItem => r.type === 'song' || r.type === 'video')
+          : undefined;
         if (!track) throw new Error(`play: no song found for "${songOrIndex}"`);
-        player().playSong(track as any);
+        await player().playSong(track);
         return;
       }
-      player().playSong(songOrIndex);
+      await player().playSong(songOrIndex);
     }, songOrIndex);
   },
   pause() {
     return act('pause', () => {
-      if (player().isPlaying) player().togglePlay();
+      if (player().isPlaying) player().pause();
     });
   },
   async toggle() {
-    return act('toggle', () => player().togglePlay());
+    return actAsync('toggle', () => player().togglePlay());
   },
   async next() {
-    return act('next', () => player().next());
+    return actAsync('next', () => player().next());
   },
   async prev() {
-    return act('prev', () => player().previous());
+    return actAsync('prev', () => player().previous());
   },
   seek(seconds: number) {
     return act('seek', () => player().seek(seconds), seconds);
@@ -136,7 +139,7 @@ const api = {
     const p = player();
     return {
       title: p.currentSong?.title || p.currentSong?.name || null,
-      author: p.currentSong?.author || (p.currentSong as any)?.artist?.name || null,
+      author: p.currentSong?.author || p.currentSong?.artist?.name || null,
       id: p.currentSong?.id || p.currentSong?.videoId || null,
       currentTime: p.currentTime,
       duration: p.duration,
@@ -156,32 +159,37 @@ const api = {
   // --- Queue ---
   queue: {
     list() { return simpleQueue(); },
-    add(song: any) { return act('queue.add', () => player().addToQueue(song), simpleSong(song)); },
-    addNext(song: any) { return act('queue.addNext', () => player().addNext(song), simpleSong(song)); },
+    add(song: TrackItem) { return act('queue.add', () => player().addToQueue(song), simpleSong(song)); },
+    addNext(song: TrackItem) { return act('queue.addNext', () => player().addNext(song), simpleSong(song)); },
     remove(index: number) {
       return act('queue.remove', () => {
         const q = player().queue;
-        if (index < 0 || index >= q.length) throw new Error(`queue.remove: index ${index} out of range`);
+        if (!isQueueIndex(index, q.length)) throw new Error(`queue.remove: index ${index} out of range`);
         player().removeFromQueue(q[index].queueId);
       }, index);
     },
     clear() { return act('queue.clear', () => player().clearQueue()); },
     async playAt(index: number) {
-      return act('queue.playAt', () => {
-        if (index < 0 || index >= player().queue.length)
+      return actAsync('queue.playAt', async () => {
+        if (!isQueueIndex(index, player().queue.length))
           throw new Error(`queue.playAt: index ${index} out of range`);
-        player().playFromQueue(index);
+        await player().playFromQueue(index);
       }, index);
     },
     reorder(from: number, to: number) {
-      return act('queue.reorder', () => player().reorderQueue(from, to), { from, to });
+      return act('queue.reorder', () => {
+        const { queue, reorderQueue } = player();
+        if (!isQueueIndex(from, queue.length) || !isQueueIndex(to, queue.length))
+          throw new Error(`queue.reorder: indices ${from}, ${to} out of range (queue length: ${queue.length})`);
+        reorderQueue(from, to);
+      }, { from, to });
     },
     length() { return player().queue.length; },
   },
 
   // --- Shuffle & Repeat ---
   shuffle() { return act('shuffle', () => player().toggleShuffle()); },
-  repeat(mode?: any) {
+  repeat(mode?: Parameters<ReturnType<typeof player>['setRepeatMode']>[0]) {
     if (mode === undefined) return player().repeatMode;
     return act('repeat', () => player().setRepeatMode(mode), mode);
   },
@@ -189,22 +197,27 @@ const api = {
   // --- Favorites ---
   favorites: {
     list() { return player().favorites.map(f => simpleSong(f.song)); },
-    toggle(song: any) { return act('favorites.toggle', () => player().toggleFavorite(song), simpleSong(song)); },
+    toggle(song: TrackItem) { return act('favorites.toggle', () => player().toggleFavorite(song), simpleSong(song)); },
     isFav(videoId: string) { return player().isFavorite(videoId); },
     async playAll() {
-      return act('favorites.playAll', () => {
+      return actAsync('favorites.playAll', async () => {
         const favs = player().favorites;
         if (!favs.length) throw new Error('favorites.playAll: no favorites');
         const songs = favs.map(f => f.song);
-        player().setQueue(songs, 0);
+        await player().setQueue(songs, 0);
       });
     },
     async shufflePlay() {
-      return act('favorites.shufflePlay', () => {
+      return actAsync('favorites.shufflePlay', async () => {
         const favs = player().favorites;
         if (!favs.length) throw new Error('favorites.shufflePlay: no favorites');
-        const songs = [...favs.map(f => f.song)].sort(() => Math.random() - 0.5);
-        player().setQueue(songs, 0);
+        const songs = favs.map(f => f.song);
+        // Shuffle the input without changing the player's shuffle mode.
+        for (let i = songs.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [songs[i], songs[j]] = [songs[j], songs[i]];
+        }
+        await player().setQueue(songs, 0);
       });
     },
     count() { return player().favorites.length; },
@@ -244,13 +257,7 @@ const api = {
 
   // --- Error ---
   lastError() { return _lastError; },
-  onError(callback: (e: LogEntry) => void) {
-    _errorCallbacks.push(callback);
-    return () => {
-      const i = _errorCallbacks.indexOf(callback);
-      if (i >= 0) _errorCallbacks.splice(i, 1);
-    };
-  },
+  onError: onErrorEntry,
   clearErrors() { _lastError = null; },
 
   // --- Highlight ---
@@ -307,8 +314,14 @@ const api = {
   version() { return '1.0.0'; },
 };
 
+declare global {
+  interface Window {
+    m14u: typeof api;
+  }
+}
+
 export function registerConsoleAPI() {
-  (window as any).m14u = api;
+  window.m14u = api;
   console.log(
     '%c🎵 m14u console API ready — type m14u.help() for commands',
     'color:#ff3b6b;font-weight:bold',

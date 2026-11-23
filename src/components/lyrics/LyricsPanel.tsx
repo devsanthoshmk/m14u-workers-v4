@@ -17,6 +17,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { getLyrics } from '@/services/lyrics';
 import type { LyricsData } from '@/types/lyrics';
 import { cn } from '@/lib/utils';
+import { trackDurationSeconds } from '@/utils/trackMetadata';
 
 interface LyricsPanelProps {
     embedded?: boolean;
@@ -24,18 +25,31 @@ interface LyricsPanelProps {
 }
 
 export function LyricsPanel(props: LyricsPanelProps) {
-    const id = usePlayerStore(s => s.currentSong?.id);
-    return <TrackLyrics key={id} {...props} />;
+    const song = usePlayerStore(s => s.currentSong);
+    if (!song) return null;
+    const title = song.name || song.title || '';
+    const artist = song.artist?.name || song.author || '';
+    const album = song.album?.name || undefined;
+    const duration = trackDurationSeconds(song);
+    // Remount when lookup inputs change so old lyrics and scroll state disappear together.
+    return <TrackLyrics key={JSON.stringify([song.id, title, artist, album, duration])}
+        {...props} title={title} artist={artist} album={album} duration={duration} />;
 }
 
-function TrackLyrics({ embedded = false, onClose }: LyricsPanelProps) {
-    const currentSong = usePlayerStore(s => s.currentSong);
+interface TrackLyricsProps extends LyricsPanelProps {
+    title: string;
+    artist: string;
+    album?: string;
+    duration?: number;
+}
+
+function TrackLyrics({ embedded = false, onClose, title, artist, album, duration }: TrackLyricsProps) {
     const currentTime = usePlayerStore(s => s.currentTime);
     const seek = usePlayerStore(s => s.seek);
     const setLyricsOpen = useUIStore(s => s.setLyricsOpen);
 
     const [lyrics, setLyrics] = useState<LyricsData | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [lyricsError, setLyricsError] = useState<string | null>(null);
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -46,30 +60,14 @@ function TrackLyrics({ embedded = false, onClose }: LyricsPanelProps) {
 
     // Fetch lyrics when song changes
     useEffect(() => {
-        if (!currentSong) return;
         let active = true;
 
-        // Handle both TrackItem and legacy Song
-        const songTitle = (currentSong as any).name || currentSong.title || '';
-        const songArtist = (currentSong as any).artist?.name || currentSong.author || '';
-        const songAlbum = (currentSong as any).album?.name || '';
-        const songDuration = (currentSong as any).duration || (currentSong as any).durationSec || 0;
-
-        setIsLoading(true);
-        setLyricsError(null);
-        setLyrics(null);
-
-        getLyrics(
-            songTitle,
-            songArtist,
-            songAlbum || undefined,
-            typeof songDuration === 'string' ? 0 : songDuration
-        )
+        getLyrics(title, artist, album, duration)
             .then(data => { if (active) setLyrics(data); })
             .catch(() => { if (active) setLyricsError('Could not load lyrics'); })
             .finally(() => { if (active) setIsLoading(false); });
         return () => { active = false; };
-    }, [currentSong]);
+    }, [title, artist, album, duration]);
 
     // Find current active synced line
     const activeLine = useMemo(() => {
@@ -98,15 +96,14 @@ function TrackLyrics({ embedded = false, onClose }: LyricsPanelProps) {
                 top: container.scrollTop + line.top - viewport.top + (line.height - viewport.height) / 2,
                 behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
             });
-            setTimeout(() => { isProgrammaticScrollRef.current = false; }, 450);
-            return;
+        } else {
+            activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-
-        activeLineRef.current.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-        });
-        setTimeout(() => { isProgrammaticScrollRef.current = false; }, 450);
+        const timer = setTimeout(() => { isProgrammaticScrollRef.current = false; }, 450);
+        return () => {
+            clearTimeout(timer);
+            isProgrammaticScrollRef.current = false;
+        };
     }, [activeLine, embedded]);
 
     // Detect user scroll — pause auto-scroll temporarily
@@ -119,7 +116,9 @@ function TrackLyrics({ embedded = false, onClose }: LyricsPanelProps) {
         }, 4000);
     }, []);
 
-    if (!currentSong) return null;
+    useEffect(() => () => {
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    }, []);
 
     return (
         <div className="flex flex-col h-full w-full">

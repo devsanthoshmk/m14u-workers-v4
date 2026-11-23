@@ -6,7 +6,7 @@ function createOverlay(rect: DOMRect, label?: string): HTMLDivElement {
   Object.assign(el.style, {
     position: 'fixed', top: `${rect.top}px`, left: `${rect.left}px`,
     width: `${rect.width}px`, height: `${rect.height}px`,
-    border: '3px solid #ff3b6b', borderRadius: '6px',
+    boxSizing: 'border-box', border: '3px solid #ff3b6b', borderRadius: '6px',
     background: 'rgba(255,59,107,0.12)', pointerEvents: 'none', zIndex: '99999',
     transition: 'opacity 0.3s',
   });

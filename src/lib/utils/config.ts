@@ -1,6 +1,6 @@
 import type { TrackItem } from '@/types/music';
 
-export let config = {
+export const config = {
   language: '',
   shareAction: 'play' as 'play' | 'watch' | 'download',
   quality: 'medium' as 'low' | 'medium' | 'high' | 'worst',
@@ -50,7 +50,7 @@ export function setConfig<K extends keyof AppConfig>(key: K, val: AppConfig[K]) 
   localStorage.setItem('config', str);
 }
 
-export let drawer = {
+export const drawer = {
   recentSearches: [] as string[],
   discovery: [] as (TrackItem & { frequency: number })[],
   lastMainFeature: 'search' as 'search' | 'library',

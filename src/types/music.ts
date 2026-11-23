@@ -112,7 +112,7 @@ export interface TrackItem {
 }
 
 // Backend types
-export interface YTItem extends TrackItem {}
+export type YTItem = TrackItem;
 
 export interface YTListItem {
     id: string;

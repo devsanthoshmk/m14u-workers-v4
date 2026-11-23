@@ -1,8 +1,9 @@
 import { YTNodes, type Helpers } from 'youtubei.js';
 import { getClient, getThumbnail, formatDuration } from './utils.js';
+import type { ProviderBudget } from './providerBudget.js';
 
-export default async function(id: string) {
-  const yt = await getClient();
+export default async function(budget: ProviderBudget, id: string) {
+  const yt = await getClient(budget);
   const artist = await yt.music.getArtist(id);
 
   let name = '';
@@ -25,8 +26,9 @@ export default async function(id: string) {
     if (songs && songs.contents) {
       songItems = songs.contents;
     }
-  } catch (e) {
-    console.error('Error fetching all songs:', e);
+  } catch {
+    budget.markDegraded();
+    console.warn('Catalog artist song lookup failed; using shelf fallback');
     const songsSection = artist.sections?.find(s => s.is(YTNodes.MusicShelf) && s.as(YTNodes.MusicShelf).title?.text?.toLowerCase().includes('songs'))?.as(YTNodes.MusicShelf);
     if (songsSection) {
       songItems = songsSection.contents;
