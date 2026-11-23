@@ -2,10 +2,10 @@ import { Music2, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { SongCard } from '@/components/song/SongCard';
-import type { TrackItem } from '@/types/music';
 
 export function HomePage() {
     const history = usePlayerStore(s => s.listeningHistory);
+    const setQueue = usePlayerStore(s => s.setQueue);
     const recent = history.slice(0, 8);
 
     return (
@@ -16,7 +16,7 @@ export function HomePage() {
                     <h2 id="recently-played" className="mb-3 text-lg font-semibold">Recently played</h2>
                     <div className="-mx-2 grid grid-cols-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                         {recent.map(({ song }, index) => (
-                            <SongCard key={`${song.id}-${index}`} song={song as TrackItem} index={index} />
+                            <SongCard key={song.id} song={song} index={index} onPlay={() => void setQueue([song])} />
                         ))}
                     </div>
                 </section>

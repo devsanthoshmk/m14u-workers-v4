@@ -11,7 +11,6 @@ import type { TrackItem } from '@/types/music';
 export function FavoritesPage() {
     const favorites = usePlayerStore(s => s.favorites);
     const setQueue = usePlayerStore(s => s.setQueue);
-    const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
 
     const songs = favorites.map(f => f.song as TrackItem);
 
@@ -22,9 +21,7 @@ export function FavoritesPage() {
 
     const shufflePlay = () => {
         if (songs.length === 0) return;
-        setQueue(songs, 0).then(() => {
-            toggleShuffle();
-        });
+        void setQueue(songs, 0, true);
     };
 
     return (

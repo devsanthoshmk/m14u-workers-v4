@@ -15,6 +15,8 @@ import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
+import { isAndroid } from '@/lib/utils/platform';
+import NativePlayback, { type NativePlaybackState } from '@/plugins/NativePlayback';
 
 interface QueueItem {
     queueId: string;
@@ -23,6 +25,8 @@ interface QueueItem {
 }
 
 type RepeatMode = 'off' | 'all' | 'one';
+type SleepPreset = number | 'end_of_song';
+const idleTimer = { isActive: false, remainingSeconds: 0, totalSeconds: 0, preset: null };
 
 interface ShareablePlayerState {
     currentSong: TrackItem | null;
@@ -77,6 +81,12 @@ interface PlayerStore {
     // Player actions
     playSong: (song: TrackItem) => Promise<void>;
     togglePlay: () => Promise<void>;
+    resume: () => Promise<void>;
+    pause: () => void;
+    retryPlayback: () => Promise<void>;
+    sleepTimer: Omit<typeof idleTimer, 'preset'> & { preset: SleepPreset | null };
+    startSleepTimer: (preset: SleepPreset) => void;
+    cancelSleepTimer: () => void;
     next: () => Promise<void>;
     previous: () => Promise<void>;
     seek: (time: number) => void;
@@ -92,7 +102,7 @@ interface PlayerStore {
     reorderQueue: (fromIndex: number, toIndex: number) => void;
     clearQueue: () => void;
     playFromQueue: (index: number) => Promise<void>;
-    setQueue: (songs: TrackItem[], startIndex?: number) => Promise<void>;
+    setQueue: (songs: TrackItem[], startIndex?: number, shuffled?: boolean) => Promise<void>;
 
     // Favorites actions
     toggleFavorite: (song: TrackItem) => void;
@@ -122,19 +132,94 @@ function createQueueItem(song: TrackItem): QueueItem {
     };
 }
 
+const androidPlayback = isAndroid();
+const nativeRepeat = { off: 0, one: 1, all: 2 };
+const nativeQueue = (queue: QueueItem[], selectedId?: string, url?: string) => queue.map(({ queueId, song }) => ({
+    queueId, id: song.id, title: song.name || song.title, artist: song.artist?.name || song.author,
+    artwork: song.img || song.thumbnails?.[0]?.url, url: queueId === selectedId ? url : undefined,
+    proxy: import.meta.env.VITE_INVIDIOUS_URL?.trim() || usePlayerStore.getState().proxy || 'https://yt.omada.cafe',
+}));
+let nativeLoading = false;
+let nativeLoaded = false;
+let nativeInitialized = false;
+let nativeListening = { id: '', time: 0, total: 0, playing: false };
+
+function applyNativeState(snapshot: NativePlaybackState) {
+    if (nativeLoading || !snapshot.queueId) return;
+    const state = usePlayerStore.getState();
+    const queueIndex = state.queue.findIndex(row => row.queueId === snapshot.queueId);
+    if (queueIndex < 0) return;
+    nativeLoaded = true;
+    const currentSong = state.queue[queueIndex].song;
+    if (nativeListening.id !== snapshot.queueId) {
+        nativeListening = { id: snapshot.queueId, time: snapshot.position, total: 0, playing: false };
+    }
+    const elapsed = snapshot.position - nativeListening.time;
+    if (nativeListening.playing && elapsed > 0 && elapsed < 2.5 && nativeListening.total < 5) {
+        nativeListening.total += elapsed;
+        if (nativeListening.total >= 5) state.addToHistory(currentSong, Math.floor(nativeListening.total));
+    }
+    nativeListening.time = snapshot.position;
+    nativeListening.playing = snapshot.playing;
+    usePlayerStore.setState({
+        queueIndex, currentSong, currentTime: Math.floor(snapshot.position), duration: Math.floor(snapshot.duration),
+        isPlaying: snapshot.playing, isBuffering: snapshot.buffering, error: snapshot.error || null,
+        status: snapshot.buffering ? 'Buffering...' : '',
+        ...(snapshot.sleepEnded && state.sleepTimer.preset === 'end_of_song' ? { sleepTimer: idleTimer } : {}),
+    });
+}
+
+function reportNativeError(error: unknown) {
+    usePlayerStore.setState({ error: error instanceof Error ? error.message : 'Android playback unavailable',
+        isPlaying: false, isBuffering: false, status: '' });
+}
+
+async function nativeControl(action: string, value?: number) {
+    try {
+        await NativePlayback.control({ action, value });
+    } catch (error) {
+        reportNativeError(error);
+    }
+}
+
 export const usePlayerStore = create<PlayerStore>()(
     persist(
         (set, get) => {
             const audio = new Audio();
             let playbackAttempt: AbortController | undefined;
+            let timer: ReturnType<typeof setInterval> | undefined;
+            let recorded = false;
+            let wantsPlayback = false;
+            let fade = 1;
+            const updateVolume = () => {
+                const { volume, isMuted } = get();
+                if (androidPlayback) {
+                    if (nativeLoaded) void nativeControl('volume', isMuted ? 0 : volume * fade);
+                } else audio.volume = volume * fade;
+            };
+            const recordListening = () => {
+                const { currentSong } = get();
+                if (recorded || !currentSong || !audio.getAttribute('src')) return;
+                let listened = 0;
+                for (let i = 0; i < audio.played.length; i++) {
+                    listened += audio.played.end(i) - audio.played.start(i);
+                }
+                if (listened >= 5) {
+                    recorded = true;
+                    get().addToHistory(currentSong, Math.floor(listened));
+                }
+            };
             
             // Initialize audio event listeners
             audio.addEventListener('timeupdate', () => {
+                if (!audio.getAttribute('src')) return;
+                recordListening();
                 if (document.activeElement?.matches('input[type="range"]')) return;
                 set({ currentTime: Math.floor(audio.currentTime) });
             });
 
             audio.addEventListener('loadedmetadata', () => {
+                if (!audio.getAttribute('src')) return;
                 set({ 
                     duration: Math.floor(audio.duration),
                     isBuffering: false 
@@ -142,27 +227,34 @@ export const usePlayerStore = create<PlayerStore>()(
             });
 
             audio.addEventListener('play', () => {
+                if (!audio.getAttribute('src') || audio.paused) return;
                 set({ isPlaying: true, isBuffering: false });
             });
 
             audio.addEventListener('pause', () => {
-                set({ isPlaying: false });
+                if (audio.paused) {
+                    recordListening();
+                    set({ isPlaying: false });
+                }
             });
 
             audio.addEventListener('ended', () => {
-                get()._onTrackEnded();
+                if (audio.ended && get().currentSong) get()._onTrackEnded();
             });
 
             audio.addEventListener('waiting', () => {
+                if (!audio.getAttribute('src') || !wantsPlayback) return;
                 set({ isBuffering: true, status: 'Buffering...' });
             });
 
             audio.addEventListener('canplay', () => {
+                if (!audio.getAttribute('src')) return;
                 set({ isBuffering: false, status: '' });
             });
 
             audio.addEventListener('error', () => {
                 const mediaError = audio.error;
+                if (!mediaError || !audio.getAttribute('src')) return;
                 const errorCode = mediaError?.code;
                 const errorMsg = mediaError?.message;
                 
@@ -172,7 +264,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 else if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) error = 'Unsupported format';
                 
                 console.error('Audio error:', { code: errorCode, message: errorMsg });
-                set({ error, isBuffering: false, isPlaying: false });
+                set({ error, isBuffering: false, isPlaying: false, status: '' });
             });
 
             return {
@@ -187,6 +279,39 @@ export const usePlayerStore = create<PlayerStore>()(
                 isMuted: false,
                 error: null,
                 status: '',
+                sleepTimer: idleTimer,
+                cancelSleepTimer: () => {
+                    clearInterval(timer);
+                    fade = 1;
+                    updateVolume();
+                    if (androidPlayback) void nativeControl('sleep', 0);
+                    set({ sleepTimer: idleTimer });
+                },
+                startSleepTimer: (preset) => {
+                    get().cancelSleepTimer();
+                    if (preset === 'end_of_song') {
+                        if (get().currentSong) {
+                            set({ sleepTimer: { ...idleTimer, isActive: true, preset } });
+                            if (androidPlayback) void nativeControl('sleep', -1);
+                        }
+                        return;
+                    }
+                    const totalSeconds = preset * 60;
+                    const expires = Date.now() + totalSeconds * 1000;
+                    if (androidPlayback) void nativeControl('sleep', totalSeconds);
+                    set({ sleepTimer: { isActive: true, preset, totalSeconds, remainingSeconds: totalSeconds } });
+                    timer = setInterval(() => {
+                        const remainingSeconds = Math.max(0, Math.ceil((expires - Date.now()) / 1000));
+                        if (!remainingSeconds) {
+                            get().pause();
+                            get().cancelSleepTimer();
+                            return;
+                        }
+                        fade = Math.min(1, remainingSeconds / Math.min(30, totalSeconds));
+                        updateVolume();
+                        set({ sleepTimer: { isActive: true, preset, totalSeconds, remainingSeconds } });
+                    }, 1000);
+                },
                 proxy: '',
                 streamData: null,
                 queue: [],
@@ -201,19 +326,27 @@ export const usePlayerStore = create<PlayerStore>()(
 
                 playSong: async (song: TrackItem) => {
                     const state = get();
+                    recordListening();
+                    recorded = false;
+                    wantsPlayback = true;
                     playbackAttempt?.abort();
                     const attempt = new AbortController();
                     playbackAttempt = attempt;
+                    if (androidPlayback) {
+                        nativeLoading = true;
+                        if (nativeLoaded) void nativeControl('pause');
+                        nativeLoaded = false;
+                    }
                     audio.pause();
                     audio.removeAttribute('src');
                     audio.load();
 
-                    // Add current song's listening time to history before switching
-                    if (state.currentSong && state.currentTime > 5) {
-                        state.addToHistory(state.currentSong, state.currentTime);
-                    }
+                    // Standalone selections replace the queue; retries keep their row.
+                    const standalone = state.queue[state.queueIndex]?.song.id !== song.id;
+                    const queue = standalone ? [createQueueItem(song)] : state.queue;
 
                     set({
+                        ...(standalone ? { queue, originalQueue: queue, queueIndex: 0, isShuffled: false } : {}),
                         currentSong: song,
                         isBuffering: true,
                         isPlaying: false,
@@ -256,9 +389,33 @@ export const usePlayerStore = create<PlayerStore>()(
                         // Check if song changed while we were fetching
                         if (attempt.signal.aborted) return;
 
+                        if (androidPlayback) {
+                            const latest = get();
+                            const play = wantsPlayback;
+                            const snapshot = await NativePlayback.loadQueue({
+                                queue: nativeQueue(latest.queue, latest.queue[latest.queueIndex]?.queueId, streamUrl),
+                                index: latest.queueIndex, repeat: nativeRepeat[latest.repeatMode],
+                                volume: latest.isMuted ? 0 : latest.volume * fade, play,
+                            });
+                            if (attempt.signal.aborted) return;
+                            nativeLoading = false;
+                            nativeListening.id = '';
+                            applyNativeState(snapshot);
+                            set({ streamData: data });
+                            if (play !== wantsPlayback) void nativeControl(wantsPlayback ? 'play' : 'pause');
+                            if (get().queue !== latest.queue) {
+                                void NativePlayback.updateQueue({ queue: nativeQueue(get().queue) }).catch(reportNativeError);
+                            }
+                            return;
+                        }
+
                         audio.src = streamUrl;
-                        audio.volume = state.volume;
-                        audio.muted = state.isMuted;
+                        updateVolume();
+                        audio.muted = get().isMuted;
+                        if (!wantsPlayback) {
+                            set({ streamData: data, isBuffering: false, status: '' });
+                            return;
+                        }
                         
                         let timer: ReturnType<typeof setTimeout> | undefined;
                         try {
@@ -283,6 +440,9 @@ export const usePlayerStore = create<PlayerStore>()(
                         prefetchNextSong();
                     } catch (err) {
                         if (attempt.signal.aborted) return;
+                        if (androidPlayback) nativeLoading = false;
+                        if (!wantsPlayback && !audio.error && audio.getAttribute('src')) return;
+                        wantsPlayback = false;
                         audio.pause();
                         audio.removeAttribute('src');
                         audio.load();
@@ -296,19 +456,59 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 togglePlay: async () => {
-                    const { currentSong, audio, isBuffering } = get();
-                    if (!currentSong || isBuffering) return;
-                    if (!audio.getAttribute('src')) return get().playSong(currentSong);
-                    
-                    if (audio.paused) {
+                    if (androidPlayback) {
+                        if (get().isPlaying || (get().isBuffering && (!nativeLoading || wantsPlayback))) get().pause();
+                        else await get().resume();
+                        return;
+                    }
+                    if (wantsPlayback && (get().isBuffering || (!audio.paused && !audio.ended))) get().pause();
+                    else await get().resume();
+                },
+
+                pause: () => {
+                    wantsPlayback = false;
+                    if (androidPlayback) {
+                        if (nativeLoaded || nativeLoading) void nativeControl('pause');
+                        set({ isPlaying: false, isBuffering: false, status: '' });
+                        return;
+                    }
+                    audio.pause();
+                    if (audio.getAttribute('src')) set({ isPlaying: false, isBuffering: false, status: '' });
+                    else set({ isPlaying: false });
+                },
+
+                resume: async () => {
+                    const { currentSong, error, isBuffering } = get();
+                    if (!currentSong) return;
+                    wantsPlayback = true;
+                    if (androidPlayback) {
+                        if (nativeLoading) {
+                            set({ isBuffering: true, status: 'Loading stream...' });
+                            return;
+                        }
+                        if (error || !nativeLoaded) return get().retryPlayback();
+                        await nativeControl('play');
+                        return;
+                    }
+                    if (isBuffering && !audio.getAttribute('src')) return;
+                    if (error || !audio.getAttribute('src')) return get().retryPlayback();
+                    const attempt = playbackAttempt;
+                    try {
                         await audio.play();
-                    } else {
-                        audio.pause();
+                    } catch (err) {
+                        if (attempt !== playbackAttempt || !wantsPlayback) return;
+                        wantsPlayback = false;
+                        set({ error: err instanceof Error ? err.message : 'Could not resume playback', isBuffering: false, status: '' });
                     }
                 },
 
+                retryPlayback: async () => {
+                    const { currentSong } = get();
+                    if (currentSong) await get().playSong(currentSong);
+                },
+
                 next: async () => {
-                    const { queue, queueIndex, repeatMode, audio } = get();
+                    const { queue, queueIndex, repeatMode } = get();
                     if (queue.length === 0) return;
 
                     let nextIndex = queueIndex + 1;
@@ -317,8 +517,7 @@ export const usePlayerStore = create<PlayerStore>()(
                         if (repeatMode === 'all') {
                             nextIndex = 0;
                         } else {
-                            audio.pause();
-                            set({ isPlaying: false });
+                            get().pause();
                             return;
                         }
                     }
@@ -328,12 +527,11 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 previous: async () => {
-                    const { queue, queueIndex, currentTime, audio } = get();
+                    const { queue, queueIndex, currentTime } = get();
                     if (queue.length === 0) return;
 
                     if (currentTime > 3) {
-                        audio.currentTime = 0;
-                        set({ currentTime: 0 });
+                        get().seek(0);
                         return;
                     }
 
@@ -347,6 +545,12 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 seek: (time: number) => {
+                    if (!Number.isFinite(time)) return;
+                    time = Math.max(0, Math.min(time, get().duration || Infinity));
+                    if (androidPlayback) {
+                        if (nativeLoaded) void nativeControl('seek', time);
+                        return;
+                    }
                     const { audio } = get();
                     audio.currentTime = time;
                     set({ currentTime: time });
@@ -354,33 +558,48 @@ export const usePlayerStore = create<PlayerStore>()(
 
                 setVolume: (volume: number) => {
                     const clamped = Math.min(Math.max(0, volume), 1);
+                    if (androidPlayback) {
+                        set({ volume: clamped, isMuted: clamped === 0 });
+                        updateVolume();
+                        return;
+                    }
                     const { audio } = get();
-                    audio.volume = clamped;
+                    audio.volume = clamped * fade;
+                    audio.muted = clamped === 0;
                     set({ volume: clamped, isMuted: clamped === 0 });
                 },
 
                 toggleMute: () => {
                     const { isMuted, volume, audio } = get();
                     const newMuted = !isMuted;
+                    if (androidPlayback) {
+                        set({ isMuted: newMuted, volume: !newMuted && volume === 0 ? 0.5 : volume });
+                        updateVolume();
+                        return;
+                    }
                     audio.muted = newMuted;
                     set({ isMuted: newMuted });
                     if (!newMuted && volume === 0) {
-                        audio.volume = 0.5;
+                        audio.volume = 0.5 * fade;
                         set({ volume: 0.5 });
                     }
                 },
 
-                setRepeatMode: (mode: RepeatMode) => set({ repeatMode: mode }),
+                setRepeatMode: (mode: RepeatMode) => {
+                    set({ repeatMode: mode });
+                    if (androidPlayback && nativeLoaded) void nativeControl('repeat', nativeRepeat[mode]);
+                },
 
                 toggleShuffle: () => {
                     const { isShuffled, queue, queueIndex, originalQueue } = get();
+                    if (queue.length < 2) return;
                     if (isShuffled) {
                         const currentQueueId = queue[queueIndex]?.queueId;
                         const restoredIndex = originalQueue.findIndex(q => q.queueId === currentQueueId);
                         set({
                             isShuffled: false,
                             queue: [...originalQueue],
-                            queueIndex: restoredIndex >= 0 ? restoredIndex : 0,
+                            queueIndex: restoredIndex,
                         });
                     } else {
                         const currentItem = queue[queueIndex];
@@ -390,7 +609,7 @@ export const usePlayerStore = create<PlayerStore>()(
                             isShuffled: true,
                             originalQueue: [...queue],
                             queue: shuffled,
-                            queueIndex: 0,
+                            queueIndex: currentItem ? 0 : -1,
                         });
                     }
                 },
@@ -423,6 +642,11 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 removeFromQueue: (queueId: string) => {
+                    const { queue, queueIndex } = get();
+                    if (queue[queueIndex]?.queueId === queueId) {
+                        if (queue.length === 1) get().clearQueue();
+                        return; // Clear stops a sole track; otherwise keep the active row.
+                    }
                     set(state => {
                         const removeIndex = state.queue.findIndex(q => q.queueId === queueId);
                         if (removeIndex === -1) return state;
@@ -432,8 +656,6 @@ export const usePlayerStore = create<PlayerStore>()(
 
                         if (removeIndex < state.queueIndex) {
                             newIndex = state.queueIndex - 1;
-                        } else if (removeIndex === state.queueIndex && newQueue.length > 0) {
-                            newIndex = Math.min(state.queueIndex, newQueue.length - 1);
                         }
 
                         return {
@@ -461,19 +683,39 @@ export const usePlayerStore = create<PlayerStore>()(
                             newIndex = state.queueIndex + 1;
                         }
 
-                        return { queue: newQueue, queueIndex: newIndex };
+                        return {
+                            queue: newQueue,
+                            queueIndex: newIndex,
+                            originalQueue: state.isShuffled ? state.originalQueue : newQueue,
+                        };
                     });
                 },
 
                 clearQueue: () => {
-                    const { audio } = get();
+                    recordListening();
+                    playbackAttempt?.abort();
+                    playbackAttempt = undefined;
+                    if (androidPlayback) {
+                        nativeLoading = false;
+                        nativeLoaded = false;
+                        void nativeControl('clear');
+                    }
+                    wantsPlayback = false;
                     audio.pause();
+                    audio.removeAttribute('src');
+                    audio.load();
+                    get().cancelSleepTimer();
                     set({
                         queue: [],
                         queueIndex: -1,
                         originalQueue: [],
                         currentSong: null,
                         isPlaying: false,
+                        isBuffering: false,
+                        isShuffled: false,
+                        error: null,
+                        status: '',
+                        streamData: null,
                         currentTime: 0,
                         duration: 0,
                     });
@@ -486,17 +728,18 @@ export const usePlayerStore = create<PlayerStore>()(
                     await get().playSong(queue[index].song);
                 },
 
-                setQueue: async (songs: TrackItem[], startIndex: number = 0) => {
+                setQueue: async (songs: TrackItem[], startIndex = 0, shuffled = false) => {
+                    if (!songs.length) return get().clearQueue();
                     const items = songs.map(createQueueItem);
+                    const queue = shuffled ? shuffleArray(items) : items;
+                    const queueIndex = shuffled || !queue[startIndex] ? 0 : startIndex;
                     set({
-                        queue: items,
+                        queue,
                         originalQueue: items,
-                        queueIndex: startIndex,
-                        isShuffled: false,
+                        queueIndex,
+                        isShuffled: shuffled,
                     });
-                    if (items.length > 0 && items[startIndex]) {
-                        await get().playSong(items[startIndex].song);
-                    }
+                    await get().playSong(queue[queueIndex].song);
                 },
 
                 // === Favorites ===
@@ -544,10 +787,16 @@ export const usePlayerStore = create<PlayerStore>()(
                 _setError: (error: string | null) => set({ error }),
 
                 _onTrackEnded: () => {
-                    const { repeatMode, audio } = get();
+                    recordListening();
+                    const { repeatMode, audio, sleepTimer } = get();
+                    if (sleepTimer.preset === 'end_of_song') {
+                        get().pause();
+                        get().cancelSleepTimer();
+                        return;
+                    }
                     if (repeatMode === 'one' && get().currentSong) {
                         audio.currentTime = 0;
-                        audio.play();
+                        void get().resume();
                     } else {
                         get().next();
                     }
@@ -611,6 +860,22 @@ export const usePlayerStore = create<PlayerStore>()(
  * Must be called once on app startup.
  */
 export function initializePlayerStore(): void {
+    if (androidPlayback) {
+        if (nativeInitialized) return;
+        nativeInitialized = true;
+        void NativePlayback.addListener('state', applyNativeState)
+            .then(() => NativePlayback.getState()).then(applyNativeState).catch(reportNativeError);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) void NativePlayback.getState().then(applyNativeState).catch(reportNativeError);
+        });
+        usePlayerStore.subscribe((state, previous) => {
+            if (nativeLoaded && !nativeLoading && state.queue !== previous.queue && state.currentSong === previous.currentSong &&
+                state.queue[state.queueIndex]?.queueId === previous.queue[previous.queueIndex]?.queueId) {
+                void NativePlayback.updateQueue({ queue: nativeQueue(state.queue) }).catch(reportNativeError);
+            }
+        });
+        return;
+    }
     const store = usePlayerStore.getState();
     const { audio, volume, isMuted } = store;
     

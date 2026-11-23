@@ -19,7 +19,7 @@ const PRESETS = [
     { label: 'End of song', value: 'end_of_song' as const },
 ];
 
-export function SleepTimerButton() {
+export function SleepTimerButton({ label, className }: { label?: string; className?: string } = {}) {
     const { startTimer, cancelTimer, state } = useSleepTimer();
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -41,14 +41,19 @@ export function SleepTimerButton() {
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(
                     'p-2 rounded-full transition-all hover:bg-surface-hover relative',
-                    state.isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                    state.isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                    className,
+                    state.isActive && 'text-primary'
                 )}
                 title="Sleep timer"
+                aria-label="Sleep timer"
+                aria-expanded={isOpen}
             >
-                <Moon className="h-4 w-4" />
+                <Moon className="size-4 shrink-0" aria-hidden="true" />
+                {label}
                 {state.isActive && (
                     <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground px-1">
-                        {Math.ceil(state.remainingSeconds / 60)}
+                        {state.preset === 'end_of_song' ? '♪' : Math.ceil(state.remainingSeconds / 60)}
                     </span>
                 )}
             </button>
@@ -63,9 +68,9 @@ export function SleepTimerButton() {
                         <div className="p-3 space-y-3">
                             <div className="text-center">
                                 <p className="text-2xl font-bold font-heading text-foreground tabular-nums">
-                                    {formatDuration(state.remainingSeconds)}
+                                    {state.preset === 'end_of_song' ? 'End of song' : formatDuration(state.remainingSeconds)}
                                 </p>
-                                <p className="text-xs text-muted-foreground mt-1">remaining</p>
+                                <p className="text-xs text-muted-foreground mt-1">{state.preset === 'end_of_song' ? 'Stops before the next track or repeat' : 'remaining'}</p>
                             </div>
                             <button
                                 onClick={() => {
