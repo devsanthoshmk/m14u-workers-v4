@@ -3,6 +3,8 @@ import { API_BASE_URL } from '@/utils/constants';
 
 const render = (import.meta.env.VITE_JIOSAAVN_ORIGIN || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
 const normalize = (s: string) => s.normalize('NFKD').toLowerCase().replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const matchTitle = (s: string) => normalize(s.replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]]+[)\]]\s*$/i, ''));
+const matchArtist = (s: string) => normalize(s.replace(/\s*[-–—]\s*Topic\s*$/i, ''));
 const titleOf = (song: TrackItem) => song.name || song.title;
 const artistOf = (song: TrackItem) => song.artist?.name || song.author;
 
@@ -10,13 +12,13 @@ async function lookup(song: TrackItem, signal: AbortSignal) {
     const title = titleOf(song);
     const artist = artistOf(song);
     if (!title || !artist) return;
-    const query = new URLSearchParams({ query: `${title} ${artist.split(',')[0]}`, limit: '8' });
+    const query = new URLSearchParams({ query: `${matchTitle(title)} ${matchArtist(artist.split(',')[0])}`, limit: '8' });
     const response = await fetch(`${render}/api/search/songs?${query}`, { signal });
     if (!response.ok) throw new Error('JioSaavn search unavailable');
     const data = await response.json() as { data?: { results?: { id?: string; name?: string; artists?: { primary?: { name: string }[] } }[] } };
-    const artists = artist.split(/[,;&]/).map(normalize).filter(Boolean);
-    const match = data.data?.results?.find(row => row.name && normalize(row.name) === normalize(title)
-        && row.artists?.primary?.some(credit => artists.includes(normalize(credit.name))));
+    const artists = artist.split(/[,;&]/).map(matchArtist).filter(Boolean);
+    const match = data.data?.results?.find(row => row.name && matchTitle(row.name) === matchTitle(title)
+        && row.artists?.primary?.some(credit => artists.includes(matchArtist(credit.name))));
     if (match?.id && /^[\w-]{1,64}$/.test(match.id)) return `${render}/api/audio/${encodeURIComponent(match.id)}`;
 }
 

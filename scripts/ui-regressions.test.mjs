@@ -43,7 +43,7 @@ const { resolveWebFallback } = await server.ssrLoadModule('/src/lib/modules/webP
 const { toTrackItem, trackDurationSeconds } = await server.ssrLoadModule('/src/utils/trackMetadata.ts');
 
 test('Render fallback tries the same recording before Worker recommendations', async t => {
-    const song = { id: 'original', title: 'BIBA', author: 'Marshmello', type: 'song' };
+    const song = { id: 'original', title: 'BIBA (feat. Shirley Setia)', author: 'Marshmello - Topic', type: 'song' };
     const alternative = { id: 'other', title: 'Another Song', author: 'Marshmello', type: 'song' };
     const saavn = (name, artist) => ({ data: { results: [{ id: 'track123', name, artists: { primary: [{ name: artist }] } }] } });
     const responses = [saavn('BIBA', 'Marshmello'), saavn('BIBA', 'Wrong artist'), [alternative], saavn(alternative.title, alternative.author)];
