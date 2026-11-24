@@ -46,7 +46,7 @@ test('Render fallback tries the same recording before Worker recommendations', a
     const song = { id: 'original', title: 'BIBA (feat. Shirley Setia)', author: 'Marshmello - Topic', type: 'song' };
     const alternative = { id: 'other', title: 'Another Song', author: 'Marshmello', type: 'song' };
     const saavn = (name, artist) => ({ data: { results: [{ id: 'track123', name, artists: { primary: [{ name: artist }] } }] } });
-    const responses = [saavn('BIBA', 'Marshmello'), saavn('BIBA', 'Wrong artist'), [alternative], saavn(alternative.title, alternative.author)];
+    const responses = [saavn('BIBA', 'Marshmello'), saavn('BIBA', 'Wrong artist'), saavn('BIBA', 'Wrong artist'), [alternative], saavn(alternative.title, alternative.author)];
     const spy = t.mock.method(globalThis, 'fetch', async () => Response.json(responses.shift()));
     const signal = new AbortController().signal;
     assert.equal((await resolveWebFallback(song, signal)).same, true);
@@ -55,7 +55,20 @@ test('Render fallback tries the same recording before Worker recommendations', a
     assert.equal(replacement.same, false);
     assert.equal(replacement.song.id, 'other');
     assert.match(replacement.url, /\/api\/audio\/track123$/);
-    assert.match(spy.mock.calls[2].arguments[0], /\/api\/similar\?/);
+    assert.match(spy.mock.calls[3].arguments[0], /\/api\/similar\?/);
+});
+
+test('JioSaavn retries the unmodified title and accepts a composer in full credits', async t => {
+    const song = { id: 'original', title: 'Munbe Vaa (From "Sillunu Oru Kaadhal")', author: 'AR Rahman', type: 'song' };
+    const queries = [];
+    t.mock.method(globalThis, 'fetch', async url => {
+        queries.push(new URL(url).searchParams.get('query'));
+        return Response.json({ data: { results: queries.length === 1 ? [] : [
+            { id: 'track123', name: 'Munbe Vaa', artists: { primary: [{ name: 'Shreya Ghoshal' }], all: [{ name: 'A.R. Rahman' }] } },
+        ] } });
+    });
+    assert.match((await resolveWebFallback(song, new AbortController().signal)).url, /track123$/);
+    assert.deepEqual(queries, ['Munbe Vaa AR Rahman', 'Munbe Vaa']);
 });
 
 test('track metadata normalizes legacy IDs and preserves catalog duration labels', () => {

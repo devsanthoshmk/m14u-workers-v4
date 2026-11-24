@@ -2,9 +2,11 @@ import type { TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 
 const render = (import.meta.env.VITE_JIOSAAVN_ORIGIN || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
-const normalize = (s: string) => s.normalize('NFKD').toLowerCase().replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-const matchTitle = (s: string) => normalize(s.replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]]+[)\]]\s*$/i, ''));
-const matchArtist = (s: string) => normalize(s.replace(/\s*[-–—]\s*Topic\s*$/i, ''));
+const normalize = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
+const cleanTitle = (s: string) => s.replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|from)\s+[^)\]]+[)\]]\s*$/i, '').trim();
+const cleanArtist = (s: string) => s.replace(/\s*[-–—]\s*Topic\s*$/i, '').trim();
+const matchTitle = (s: string) => normalize(cleanTitle(s));
+const matchArtist = (s: string) => normalize(cleanArtist(s).replace(/\./g, ' ')).replace(/\b(\p{L}) (?=\p{L}\b)/gu, '$1');
 const titleOf = (song: TrackItem) => song.name || song.title;
 const artistOf = (song: TrackItem) => song.artist?.name || song.author;
 
@@ -12,14 +14,19 @@ async function lookup(song: TrackItem, signal: AbortSignal) {
     const title = titleOf(song);
     const artist = artistOf(song);
     if (!title || !artist) return;
-    const query = new URLSearchParams({ query: `${matchTitle(title)} ${matchArtist(artist.split(',')[0])}`, limit: '8' });
-    const response = await fetch(`${render}/api/search/songs?${query}`, { signal });
-    if (!response.ok) throw new Error('JioSaavn search unavailable');
-    const data = await response.json() as { data?: { results?: { id?: string; name?: string; artists?: { primary?: { name: string }[] } }[] } };
     const artists = artist.split(/[,;&]/).map(matchArtist).filter(Boolean);
-    const match = data.data?.results?.find(row => row.name && matchTitle(row.name) === matchTitle(title)
-        && row.artists?.primary?.some(credit => artists.includes(matchArtist(credit.name))));
-    if (match?.id && /^[\w-]{1,64}$/.test(match.id)) return `${render}/api/audio/${encodeURIComponent(match.id)}`;
+    const cleaned = cleanTitle(title);
+    for (const term of new Set([`${cleaned} ${cleanArtist(artist.split(',')[0])}`, cleaned])) {
+        const query = new URLSearchParams({ query: term, limit: '10' });
+        const response = await fetch(`${render}/api/search/songs?${query}`, { signal });
+        if (!response.ok) throw new Error('JioSaavn search unavailable');
+        const data = await response.json() as { data?: { results?: { id?: string; name?: string; artists?: { primary?: { name: string }[]; all?: { name: string }[] } }[] } };
+        const matches = (data.data?.results ?? []).filter(row => row.id && /^[\w-]{1,64}$/.test(row.id)
+            && row.name && matchTitle(row.name) === matchTitle(title));
+        const hasCredit = (credits?: { name: string }[]) => credits?.some(credit => artists.includes(matchArtist(credit.name)));
+        const match = matches.find(row => hasCredit(row.artists?.primary)) ?? matches.find(row => hasCredit(row.artists?.all));
+        if (match?.id) return `${render}/api/audio/${encodeURIComponent(match.id)}`;
+    }
 }
 
 export async function resolveWebFallback(song: TrackItem, attempt: AbortSignal) {
