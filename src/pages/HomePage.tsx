@@ -20,7 +20,7 @@ export function HomePage() {
                     <h2 id="recently-played" className="mb-3 text-lg font-semibold">Recently played</h2>
                     <div className="-mx-2 grid grid-cols-2 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                         {recent.map(({ song }, index) => (
-                            <SongCard key={song.id} song={song} index={index} onPlay={() => void setQueue([song])} />
+                            <SongCard key={song.id} song={song} index={index} highQualityArtwork onPlay={() => void setQueue([song])} />
                         ))}
                     </div>
                 </section>
