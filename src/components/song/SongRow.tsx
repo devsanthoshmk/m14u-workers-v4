@@ -5,7 +5,7 @@
 
 import { Play, Plus, Heart, ListPlus, MoreHorizontal } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
-import { getThumbnail } from '@/utils/format';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 import { toTrackItem } from '@/utils/trackMetadata';
 import { cn } from '@/lib/utils';
 import type { Song, TrackItem } from '@/types/music';
@@ -24,8 +24,6 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
     const songTitle = track.name || track.title;
     const songArtist = track.artist?.name || track.author;
     const songAlbum = track.album?.name;
-    const songThumbnails = track.thumbnails;
-    const songImg = track.img;
     const songDuration = track.duration;
     
     const playSong = usePlayerStore(s => s.playSong);
@@ -40,7 +38,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 60) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
+    const [thumbnail] = trackArtworkUrls(track, 60);
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {

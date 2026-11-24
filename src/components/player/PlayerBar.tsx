@@ -7,7 +7,8 @@ import { PlaybackError } from './PlaybackError';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
-import { getThumbnail, formatDuration } from '@/utils/format';
+import { formatDuration } from '@/utils/format';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 import { PlayerControls } from './PlayerControls';
 import { VolumeControl } from './VolumeControl';
 import { SleepTimerButton } from './SleepTimer';
@@ -61,10 +62,8 @@ export function PlayerBar() {
     const songId = currentSong.videoId || currentSong.id;
     const songTitle = currentSong.name || currentSong.title;
     const songArtist = currentSong.artist?.name || currentSong.author;
-    const songThumbnails = currentSong.thumbnails;
-    const songImg = currentSong.img;
 
-    const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 120) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
+    const [thumbnail] = trackArtworkUrls(currentSong, 120);
     const isFavorite = songId ? usePlayerStore.getState().isFavorite(songId) : false;
 
     const displayTime = isSeeking ? seekValue : currentTime;

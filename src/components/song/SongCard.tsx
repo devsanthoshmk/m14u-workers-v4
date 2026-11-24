@@ -6,7 +6,7 @@
  */
 
 import { usePlayerStore } from '@/stores/playerStore';
-import { getThumbnail } from '@/utils/format';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 import { toTrackItem } from '@/utils/trackMetadata';
 import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,8 +25,6 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
     const songId = track.id;
     const songTitle = track.name || track.title;
     const songArtist = track.artist?.name || track.author;
-    const songThumbnails = track.thumbnails;
-    const songImg = track.img;
     const songDuration = track.duration;
     
     const currentSong = usePlayerStore(s => s.currentSong);
@@ -45,20 +43,7 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
 
     const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
-    const defaultThumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 300) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
-    const suppliedThumbnails = highQualityArtwork ? [...(songThumbnails ?? [])].sort((a, b) => b.width - a.width) : [];
-    const suppliedArt = suppliedThumbnails[0]?.url || songImg;
-    const largerCover = suppliedArt?.replace(
-        /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
-        '$1=w800-h800',
-    );
-    const artworkUrls = highQualityArtwork ? [...new Set([
-        largerCover !== suppliedArt ? largerCover : undefined,
-        suppliedThumbnails[0]?.width >= 800 ? suppliedArt : undefined,
-        songId ? `https://i.ytimg.com/vi/${track.videoId || songId}/maxresdefault.jpg` : undefined,
-        ...suppliedThumbnails.map(({ url }) => url),
-        defaultThumbnail,
-    ].filter((url): url is string => !!url))] : [defaultThumbnail];
+    const artworkUrls = trackArtworkUrls(track, highQualityArtwork ? Infinity : 300);
     const artworkKey = JSON.stringify(artworkUrls);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
     const thumbnail = artworkUrls[artworkIndex];
@@ -90,7 +75,7 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
                 {thumbnail ? (
                     <img
                         src={thumbnail}
-                        onError={highQualityArtwork ? () => setArtworkFallback({ key: artworkKey, index: artworkIndex + 1 }) : undefined}
+                        onError={() => setArtworkFallback({ key: artworkKey, index: artworkIndex + 1 })}
                         alt={songTitle}
                         className="h-full w-full object-cover"
                         loading="lazy"

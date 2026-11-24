@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import type { TrackItem, YTListItem } from '@/types/music';
-import { API_BASE_URL } from '@/utils/constants';
-
-const API_BASE = `${API_BASE_URL}/api`;
+import { searchCatalog, suggestCatalog } from '@/services/catalog';
 let activeSearch: AbortController | undefined;
 let activeSuggestions: AbortController | undefined;
 
@@ -32,15 +30,8 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
   setState({ isLoading: true, error: null, results: [], query, filter: filter || 'all' });
 
   try {
-    const params = new URLSearchParams({ q: query });
-    if (filter && filter !== 'all') params.set('f', filter);
-
-    const res = await fetch(`${API_BASE}/search?${params}`, { signal: request.signal });
-    if (!res.ok) throw new Error('Search failed');
-
-    const data = await res.json();
+    const results = await searchCatalog(query.trim(), filter || 'all', request.signal);
     if (request.signal.aborted) return;
-    const results: SearchState['results'] = Array.isArray(data) ? data : [];
     setState({ results, isLoading: false });
     return results;
   } catch (err) {
@@ -64,13 +55,8 @@ export async function getSuggestionsWithResults(query: string): Promise<string[]
   const request = new AbortController();
   activeSuggestions = request;
   try {
-    const params = new URLSearchParams({ q: query, music: 'true' });
-    const res = await fetch(`${API_BASE}/search-suggestions?${params}`, { signal: request.signal });
-    if (!res.ok) throw new Error('Suggestions failed');
-
-    const data = await res.json();
+    const suggestions = await suggestCatalog(query.trim(), request.signal);
     if (request.signal.aborted) return;
-    const suggestions: string[] = Array.isArray(data) ? data : [];
     setState({ suggestions });
     return suggestions;
   } catch {

@@ -31,6 +31,14 @@ export default async function getStreamData(
 ): Promise<Invidious | Record<'error' | 'message', string>> {
 
   signal?.throwIfAborted();
+  if (!isNative()) {
+    if (!/^[A-Za-z0-9_-]{8}$/.test(id)) {
+      return { error: 'Invalid song ID', message: 'Select a song from the JioSaavn catalog.' };
+    }
+    return { title: '', adaptiveFormats: [{
+      url: `/api/audio/${encodeURIComponent(id)}`, type: 'audio/mp4', bitrate: '', encoding: 'aac',
+    }] };
+  }
   const cached = streamCache.get(id);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.data;
@@ -118,6 +126,7 @@ export default async function getStreamData(
 }
 
 export function prefetchNextSong() {
+  if (!isNative()) return;
   const state = usePlayerStore.getState();
   const nextIndex = state.queueIndex + 1;
   if (nextIndex < state.queue.length) {

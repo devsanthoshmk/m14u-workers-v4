@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: m14u-jiosaavn
+    runtime: node
+    plan: free
+    buildCommand: bash server/build.sh
+    startCommand: node --conditions=production server/start.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0

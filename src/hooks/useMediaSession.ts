@@ -9,6 +9,7 @@
 import { useEffect } from 'react';
 import { usePlayerStore } from '@/stores/playerStore';
 import { isAndroid } from '@/lib/utils/platform';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 
 
 export function useMediaSession(): void {
@@ -29,17 +30,12 @@ export function useMediaSession(): void {
         const songTitle = currentSong.name || currentSong.title || '';
         const songArtist = currentSong.artist?.name || currentSong.author || '';
         const songAlbum = currentSong.album?.name || '';
-        const songThumbnails = currentSong.thumbnails || [];
 
         navigator.mediaSession.metadata = new MediaMetadata({
             title: songTitle,
             artist: songArtist,
             album: songAlbum,
-            artwork: songThumbnails.map(t => ({
-                src: t.url,
-                sizes: `${t.width}x${t.height}`,
-                type: 'image/jpeg',
-            })),
+            artwork: trackArtworkUrls(currentSong).map(src => ({ src })),
         });
     }, [currentSong]);
 

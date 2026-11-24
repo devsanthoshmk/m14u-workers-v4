@@ -4,7 +4,6 @@
  */
 
 export const API_BASE_URL =  import.meta.env.VITE_API_URL || "";
-export const LRCLIB_BASE_URL = 'https://lrclib.net';
 
 /** LocalStorage keys — centralized to prevent collisions */
 export const STORAGE_KEYS = {

@@ -100,6 +100,7 @@ export interface TrackItem {
     type: 'song' | 'video';
     albumId?: string;
     img?: string;
+    shareUrl?: string;
     
     // Legacy M14U style (for backwards compatibility)
     videoId?: string;

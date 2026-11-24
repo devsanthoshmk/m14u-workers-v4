@@ -41,6 +41,8 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSleepTimer } from '@/hooks/useSleepTimer';
 import { formatDuration } from '@/utils/format';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
+import { saavnTrackUrl, trackShareUrl } from '@/utils/trackShare';
 import { ProgressBar } from '@/components/player/ProgressBar';
 import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -130,21 +132,8 @@ export function NowPlayingPage() {
     const title = currentSong?.name || currentSong?.title || 'Untitled track';
     const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
     const album = currentSong?.album?.name;
-    const thumbnails = [...(currentSong?.thumbnails ?? [])].sort((a, b) => b.width - a.width);
-    const suppliedArt = thumbnails[0]?.url || currentSong?.img;
-    // YouTube Music often supplies square covers with a small CDN size preset.
-    const fullSizeCover = suppliedArt?.replace(
-        /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
-        '$1=w800-h800',
-    );
-    const artworkUrls = [...new Set<string>([
-        fullSizeCover !== suppliedArt ? fullSizeCover : '',
-        thumbnails[0]?.width >= 800 ? suppliedArt : '',
-        songId ? `https://i.ytimg.com/vi/${songId}/maxresdefault.jpg` : '',
-        ...thumbnails.map(thumbnail => thumbnail.url),
-        suppliedArt,
-        songId ? `https://i.ytimg.com/vi/${songId}/hqdefault.jpg` : '',
-    ].filter((url): url is string => !!url))];
+    const artworkUrls = currentSong ? trackArtworkUrls(currentSong) : [];
+    const saavnUrl = currentSong && saavnTrackUrl(currentSong);
     const artworkKey = JSON.stringify([songId, artworkUrls]);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
     const art = artworkUrls[artworkIndex];
@@ -159,15 +148,14 @@ export function NowPlayingPage() {
 
     // Handle native share
     const handleShare = async () => {
-        if (!songId) return;
+        if (!currentSong) return;
         setShareMessage('');
-        const shareUrl = `https://youtu.be/${songId}`;
         if (navigator.share) {
             try {
                 await navigator.share({
                     title,
                     text: `Listening to ${title} by ${artist}`,
-                    url: shareUrl,
+                    url: trackShareUrl(currentSong, window.location.origin),
                 });
                 setShareMessage('Track link shared.');
                 return;
@@ -180,9 +168,9 @@ export function NowPlayingPage() {
 
     // Direct clipboard copy
     const handleCopyLink = useCallback(async () => {
-        if (!songId) return;
+        if (!currentSong) return;
         try {
-            await navigator.clipboard.writeText(`https://youtu.be/${songId}`);
+            await navigator.clipboard.writeText(trackShareUrl(currentSong, window.location.origin));
             setCopied(true);
             setShareMessage('Track link copied.');
             setTimeout(() => setCopied(false), 2200);
@@ -190,7 +178,7 @@ export function NowPlayingPage() {
             setCopied(false);
             setShareMessage('Could not copy the track link. Check clipboard permissions and try again.');
         }
-    }, [songId]);
+    }, [currentSong]);
 
     return (
         <section
@@ -272,7 +260,7 @@ export function NowPlayingPage() {
                     {/* ───────────────── MOBILE & TABLET LAYOUT (< lg) ───────────────── */}
                     <div className="flex flex-col lg:hidden max-w-md mx-auto w-full flex-1 min-h-0 px-1">
 
-                        {/* Upper Stage: Dynamic focal point (Artwork, Synced Lyrics, or Queue) */}
+                        {/* Upper Stage: Dynamic focal point (Artwork or Lyrics) */}
                         <div className="flex-1 min-h-0 w-full flex items-center justify-center py-2 sm:py-3">
                             {activeStage === 'cover' && (
                                 <div className="relative aspect-square w-full max-h-[min(380px,46vh)] max-w-[min(100%,380px,46vh)] rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.85)] ring-1 ring-white/15 bg-card mx-auto flex items-center justify-center transition-all duration-300">
@@ -297,7 +285,7 @@ export function NowPlayingPage() {
                                     <div className="flex items-center justify-between px-2 py-1 mb-1 shrink-0">
                                         <div className="flex items-center gap-2 min-w-0">
                                             <span className="size-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                                            <span className="text-xs font-semibold text-foreground/80 tracking-wide uppercase">Synced Lyrics</span>
+                                            <span className="text-xs font-semibold text-foreground/80 tracking-wide uppercase">Lyrics</span>
                                         </div>
                                         <button
                                             type="button"
@@ -629,7 +617,7 @@ export function NowPlayingPage() {
                                                 : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.04]'
                                         )}
                                     >
-                                        <Mic2 className="size-4" /> Synced Lyrics
+                                        <Mic2 className="size-4" /> Lyrics
                                     </button>
 
                                     <button
@@ -1014,15 +1002,15 @@ export function NowPlayingPage() {
                                 <span>{copied ? 'Link Copied!' : 'Share Track'}</span>
                             </button>
 
-                            {songId && (
+                            {saavnUrl && (
                                 <a
-                                    href={`https://youtu.be/${songId}`}
+                                    href={saavnUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-sm text-foreground transition-colors"
                                 >
                                     <ExternalLink className="size-4 text-muted-foreground" />
-                                    <span>Open on YouTube</span>
+                                    <span>Open on JioSaavn</span>
                                 </a>
                             )}
                         </div>
@@ -1082,7 +1070,7 @@ export function NowPlayingPage() {
                             </div>
                             {songId && (
                                 <div className="flex justify-between py-1 border-b border-white/5">
-                                    <span className="text-muted-foreground">Video ID</span>
+                                    <span className="text-muted-foreground">Track ID</span>
                                     <span className="font-mono text-muted-foreground">{songId}</span>
                                 </div>
                             )}
@@ -1097,14 +1085,14 @@ export function NowPlayingPage() {
                                 {copied ? <Check className="size-3.5 text-emerald-400" /> : <Share2 className="size-3.5" />}
                                 {copied ? 'Copied Link' : 'Copy Link'}
                             </button>
-                            {songId && (
+                            {saavnUrl && (
                                 <a
-                                    href={`https://youtu.be/${songId}`}
+                                    href={saavnUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="flex-1 py-2.5 rounded-xl bg-amber-400 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all"
                                 >
-                                    <ExternalLink className="size-3.5" /> Open YouTube
+                                    <ExternalLink className="size-3.5" /> Open on JioSaavn
                                 </a>
                             )}
                         </div>

@@ -1,6 +1,7 @@
 /** SearchPage — Debounced music search and playback from results. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search, X, Clock, Loader2, MoreHorizontal } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -18,7 +19,14 @@ const SUGGESTIONS = [
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 export function SearchPage() {
-    const [query, setQuery] = useState('');
+    const location = useLocation();
+    const sharedQuery = location.pathname === '/search' ? new URLSearchParams(location.search).get('q')?.trim() : undefined;
+    const [query, setQuery] = useState(sharedQuery ?? '');
+    const [seenLocationKey, setSeenLocationKey] = useState(location.key);
+    if (seenLocationKey !== location.key) {
+        setSeenLocationKey(location.key);
+        if (sharedQuery) setQuery(sharedQuery);
+    }
     const [visibleRecentCount, setVisibleRecentCount] = useState(3);
     const [isComposing, setIsComposing] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -42,7 +50,7 @@ export function SearchPage() {
         const current = useSearchStore.getState();
         if (!value || (current.query === value && !(retry && current.error))) return;
         addRecentSearch(value);
-        void search(value);
+        void search(value, 'song');
     }, [addRecentSearch, search]);
 
     useEffect(() => {

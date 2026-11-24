@@ -26,7 +26,7 @@ export function OnboardingModal() {
                         <BrandLogo artwork className="mb-4 size-28 rounded-2xl" />
                         <h1 className="text-2xl font-bold font-heading text-foreground">Welcome to M14U</h1>
                         <p className="text-sm text-muted-foreground mt-4 max-w-sm">
-                            The web demo uses Invidious and is meant for trying out M14U. For regular listening and the full feature set, use the Android app.
+                            Search for songs, build a queue, and save your favorites. On the web, music is provided by JioSaavn.
                         </p>
                         <a
                             href="https://github.com/devsanthoshmk/m14u-workers-v4"

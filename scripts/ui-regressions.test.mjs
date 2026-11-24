@@ -39,6 +39,7 @@ const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
 const { registerConsoleAPI } = await server.ssrLoadModule('/src/lib/testing/console-api.ts');
 const { trackArtworkUrls } = await server.ssrLoadModule('/src/utils/trackArtwork.ts');
+const { trackShareUrl } = await server.ssrLoadModule('/src/utils/trackShare.ts');
 const { toTrackItem, trackDurationSeconds } = await server.ssrLoadModule('/src/utils/trackMetadata.ts');
 
 test('track metadata normalizes legacy IDs and preserves catalog duration labels', () => {
@@ -54,21 +55,33 @@ test('track metadata normalizes legacy IDs and preserves catalog duration labels
     assert.equal(trackDurationSeconds({ ...catalog, duration: '2M views' }), undefined);
 });
 
-test('media artwork prefers a full-size cover and keeps fallbacks', () => {
-    const img = 'https://lh3.googleusercontent.com/cover=w60-h60-l90-rj';
-    const largest = 'https://example.test/large.jpg';
-    const urls = trackArtworkUrls({ id: 'dQw4w9WgXcQ', img, thumbnails: [
-        { url: img, width: 60 }, { url: largest, width: 800 },
-    ] });
-    assert.deepEqual(urls.slice(0, 3), [
-        'https://lh3.googleusercontent.com/cover=w800-h800', largest,
-        'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-    ]);
-    assert.equal(urls.at(-1), img);
-    assert.equal(urls.filter(url => url === img).length, 1);
+test('media artwork uses supplied covers only and omits legacy YouTube art', () => {
+    const small = 'https://c.saavncdn.com/cover-150x150.jpg';
+    const large = 'https://c.saavncdn.com/cover-500x500.jpg';
+    const track = { id: 'dQw4w9WgXcQ', img: large, thumbnails: [
+        { url: small, width: 150 }, { url: large, width: 500 },
+        { url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg', width: 1200 },
+    ] };
+    assert.deepEqual(trackArtworkUrls(track), [large, small]);
+    assert.deepEqual(trackArtworkUrls(track, 60), [small, large]);
+    assert.deepEqual(trackArtworkUrls({ id: track.id }), []);
+});
+
+test('sharing uses a Saavn URL or a title-and-artist search link', () => {
+    const origin = 'https://m14u.example';
+    const track = { id: 'song', title: 'காற்று & கடல்', author: 'Artist' };
+    const shareUrl = 'https://www.jiosaavn.com/song/title/id';
+    assert.equal(trackShareUrl({ ...track, shareUrl }, origin), shareUrl);
+    for (const url of [undefined, 'https://youtu.be/id', 'https://jiosaavn.com.evil.example/song/id']) {
+        const fallback = new URL(trackShareUrl({ ...track, shareUrl: url }, origin));
+        assert.equal(fallback.origin, origin);
+        assert.equal(fallback.pathname, '/search');
+        assert.equal(fallback.searchParams.get('q'), 'காற்று & கடல் Artist');
+    }
 });
 const player = usePlayerStore.getState;
 const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
+const catalogResults = (songs) => ({ success: true, data: { songs: { results: songs } } });
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };
 globalThis.resolveTestStream = async () => stream;
 
@@ -78,15 +91,15 @@ test('search ignores late success and failure, including after Clear', async (t)
     const state = useSearchStore.getState;
     const old = state().search('old');
     const latest = state().search('latest');
-    requests[1].resolve(Response.json(tracks));
+    requests[1].resolve(Response.json(catalogResults(tracks)));
     await latest;
     requests[0].reject(new Error('old request failed'));
     await old;
-    assert.deepEqual(state().results, tracks);
+    assert.deepEqual(state().results.map(track => track.id), tracks.map(track => track.id));
     assert.equal(state().error, null);
     const pending = state().search('clear me');
     state().clearSearch();
-    requests[2].resolve(Response.json(tracks));
+    requests[2].resolve(Response.json(catalogResults(tracks)));
     await pending;
     assert.deepEqual(state().results, []);
     assert.equal(state().isLoading, false);
@@ -98,14 +111,14 @@ test('suggestions ignore stale failures and responses after Clear', async (t) =>
     const state = useSearchStore.getState;
     const stale = state().getSuggestions('a');
     const latest = state().getSuggestions('ab');
-    requests[1].resolve(Response.json(['abc']));
+    requests[1].resolve(Response.json(catalogResults([{ title: 'abc' }])));
     await latest;
     requests[0].reject(new Error('old request failed'));
     await stale;
     assert.deepEqual(state().suggestions, ['abc']);
     const cleared = state().getSuggestions('abc');
     state().clearSearch();
-    requests[2].resolve(Response.json(['abcd']));
+    requests[2].resolve(Response.json(catalogResults([{ title: 'abcd' }])));
     await cleared;
     assert.deepEqual(state().suggestions, []);
 });
@@ -123,9 +136,9 @@ test('console play uses only its own current search results across overlaps and 
     const old = api.play('same query');
     const oldRejected = assert.rejects(old, /play: no song found for "same query"/);
     const latest = api.play('same query');
-    requests[1](Response.json([{ type: 'album', id: 'album' }, tracks[1]]));
+    requests[1](Response.json({ success: true, data: { albums: { results: [{ title: 'Album', id: 'album' }] }, songs: { results: [tracks[1]] } } }));
     await latest;
-    requests[0](Response.json([tracks[0]]));
+    requests[0](Response.json(catalogResults([tracks[0]])));
     await oldRejected;
     assert.deepEqual(played, ['B']);
 
@@ -133,17 +146,17 @@ test('console play uses only its own current search results across overlaps and 
     const clearedRejected = assert.rejects(cleared, /play: no song found for "clear me"/);
     api.clearSearch();
     const fresh = api.search('fresh');
-    requests[3](Response.json([tracks[2]]));
+    requests[3](Response.json(catalogResults([tracks[2]])));
     await fresh;
-    requests[2](Response.json([tracks[0]]));
+    requests[2](Response.json(catalogResults([tracks[0]])));
     await clearedRejected;
     assert.deepEqual(played, ['B']);
-    assert.deepEqual(useSearchStore.getState().results, [tracks[2]]);
+    assert.deepEqual(useSearchStore.getState().results.map(track => track.id), ['C']);
 });
 
 for (const [command, payload, expected] of [
-    ['search', [tracks[1]], [{ id: 'B', title: 'B', author: undefined, duration: undefined }]],
-    ['suggest', ['latest suggestion'], ['latest suggestion']],
+    ['search', catalogResults([tracks[1]]), [{ id: 'B', title: 'B', author: undefined, duration: '' }]],
+    ['suggest', catalogResults([{ title: 'latest suggestion' }]), ['latest suggestion']],
 ]) {
     test(`console ${command} returns only its own results across overlap and Clear`, async (t) => {
         globalThis.window = {};

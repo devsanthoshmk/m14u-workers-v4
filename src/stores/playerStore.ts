@@ -2,9 +2,8 @@
  * Player Store — Zustand global state for playback, queue, and audio management.
  * 
  * Rewired to use ytify architecture:
- * - Uses Invidious proxies for stream fetching
+ * - Web streams JioSaavn audio through the same-origin Render API
  * - Direct HTMLAudioElement instead of AudioEngine singleton
- * - youtubei.js backend API for metadata
  */
 
 import { create } from 'zustand';
@@ -359,7 +358,7 @@ export const usePlayerStore = create<PlayerStore>()(
                     });
 
                     try {
-                        // Fetch stream data from Invidious proxy
+                        // Resolve the source for the selected song.
                         const data = await getStreamData(song.id, false, attempt.signal);
                         
                         if ('error' in data) {
@@ -837,7 +836,7 @@ export const usePlayerStore = create<PlayerStore>()(
             };
         },
         {
-            name: STORAGE_KEYS.PLAYER_STATE,
+            name: androidPlayback ? STORAGE_KEYS.PLAYER_STATE : `${STORAGE_KEYS.PLAYER_STATE}-jiosaavn`,
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({
                 volume: state.volume,
