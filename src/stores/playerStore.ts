@@ -210,6 +210,11 @@ export const usePlayerStore = create<PlayerStore>()(
                         set({ isBuffering: false, status: '', error: 'Playback paused during recovery. Resume to retry.' });
                         return true;
                     }
+                    // Keep the shared media element attached for cross-origin playback.
+                    if (typeof HTMLAudioElement !== 'undefined' && audio instanceof HTMLAudioElement && !audio.isConnected) {
+                        audio.hidden = true;
+                        document.body.append(audio);
+                    }
                     audio.src = result.url;
                     updateVolume();
                     audio.muted = get().isMuted;
