@@ -66,7 +66,7 @@ export const LISTEN_ALONG = {
 } as const;
 
 export const FIREBASE_CONFIG = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'm14u-js.firebaseapp.com',
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'm14u-js',
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'm14u-js.firebasestorage.app',

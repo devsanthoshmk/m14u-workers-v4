@@ -1,16 +1,8 @@
-/* global importScripts, firebase, self, clients */
+/* global importScripts, firebase, self, clients, __FIREBASE_WEB_CONFIG__ */
 importScripts('https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/12.10.0/firebase-messaging-compat.js');
 
-firebase.initializeApp({
-  apiKey: '',
-  authDomain: 'm14u-js.firebaseapp.com',
-  projectId: 'm14u-js',
-  storageBucket: 'm14u-js.firebasestorage.app',
-  messagingSenderId: '102126601252',
-  appId: '1:102126601252:web:dada5103b4d382e1f604b1',
-  measurementId: 'G-SG98J8L065',
-});
+firebase.initializeApp(__FIREBASE_WEB_CONFIG__);
 
 const messaging = firebase.messaging();
 

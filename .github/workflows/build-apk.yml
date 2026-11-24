@@ -63,6 +63,8 @@ jobs:
         pnpm test:netlify
 
     - name: Build web assets and sync Capacitor
+      env:
+        VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
       run: |
         pnpm build
         pnpm exec cap sync android
