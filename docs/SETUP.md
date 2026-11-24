@@ -20,6 +20,7 @@ Vite exposes `VITE_*` values to client code. Treat them as public, and rebuild a
 | `VITE_API_URL` | Catalog API origin. When unset, the client uses relative `/api` URLs. The packaged Android app needs a reachable API origin because it does not run the Vite middleware. |
 | `VITE_INVIDIOUS_URL` | Preferred Invidious provider. The client can still try other defaults on a normal play request. |
 | `VITE_FIREBASE_API_KEY` | Optional restricted Firebase web API key. Vite generates `/firebase-messaging-sw.js` only when this is set. GitHub Actions reads it from a repository secret of the same name. Set it in your web host's build environment for web deployments. |
+| `VITE_JIOSAAVN_ORIGIN` | Optional web playback fallback origin. Defaults to `https://m14u-jiosaavn.onrender.com`; catalog and recommendations still use `VITE_API_URL`. |
 | `VITE_RESOLVER_MANIFEST_URL`, `VITE_RESOLVER_PUBLIC_KEY` | Enable the optional Android live resolver. See [signing and setup](LIVE-RESOLVER-SETUP.md). |
 
 ## Hosting and Android tooling
