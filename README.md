@@ -1,5 +1,7 @@
 # M14U
 
+This repository contains the legacy Cloudflare Workers build. We're porting the backend to Oracle in the [main M14U repository](https://github.com/devsanthoshmk/M14U).
+
 M14U is a music player for the web and Android. Both use the same React UI. On Android, Capacitor packages that UI and connects it to a native Kotlin player built on Media3. The Cloudflare Worker provides catalog metadata; audio is resolved and played by the client.
 
 ## Run locally
