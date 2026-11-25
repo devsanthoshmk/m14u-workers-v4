@@ -34,6 +34,17 @@ test('up-next validates the seed and returns only distinct recommendation identi
   assert.deepEqual(await response.json(), [{ id: '12345678901', title: 'Similar', author: 'Singer' }]);
 });
 
+test('JioSaavn recommendations exclude other releases of the seed and duplicate songs', async t => {
+  const song = (id, name, artist = 'Sabrina Carpenter') => ({ id, name, artists: { primary: [{ name: artist }] } });
+  t.mock.method(globalThis, 'fetch', async input => {
+    assert.equal(new URL(input).searchParams.get('query'), 'Sabrina Carpenter');
+    return Response.json({ success: true, data: { results: [song('copy', 'Espresso'), song('one', 'Taste'),
+      song('copy2', 'TASTE'), song('other', 'Unrelated', 'Another Artist'), song('two', 'Please Please Please')] } });
+  });
+  const response = await request('saavn-recommendations?id=seed&title=Espresso&artist=Sabrina+Carpenter');
+  assert.deepEqual((await response.json()).map(song => song.id), ['jiosaavn:one', 'jiosaavn:two']);
+});
+
 test('YouTube mode skips open discovery on an Open Audio deployment', async () => {
   const result = await request('search-discovery?catalog=youtube', 'GET', { MUSIC_CATALOG: 'open' });
   assert.equal(result.status, 200);

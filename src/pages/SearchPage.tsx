@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, X, Clock, Loader2, MoreHorizontal } from 'lucide-react';
-import { usePlayerStore } from '@/stores/playerStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { useSearchStore } from '@/lib/stores/search';
@@ -42,7 +41,6 @@ export function SearchPage() {
     const loading = useSearchStore(s => s.isLoading);
     const error = useSearchStore(s => s.error);
     const clearSearch = useSearchStore(s => s.clearSearch);
-    const setQueue = usePlayerStore(s => s.setQueue);
     const recentSearches = useUIStore(s => s.recentSearches);
     const addRecentSearch = useUIStore(s => s.addRecentSearch);
     const removeRecentSearch = useUIStore(s => s.removeRecentSearch);
@@ -309,7 +307,7 @@ export function SearchPage() {
                                     Alternatives
                                 </h3>
                                 {songDiscovery.alternatives.map((song, index) => (
-                                    <SongRow key={song.id} song={song} index={index} onPlay={() => void setQueue(songDiscovery.alternatives, index)} />
+                                    <SongRow key={song.id} song={song} index={index} onPlay={() => void playCatalogSelection(songDiscovery.alternatives, index)} />
                                 ))}
                             </div>
                         )}

@@ -12,6 +12,7 @@ import { ProviderBudget, ProviderTimeout } from './providerBudget.js';
 import { searchArchive, suggestArchive } from './archiveCatalog.js';
 import { featuredOpen, recommendOpen, resolveOpen, searchOpen, suggestOpen } from './openCatalog.js';
 import type { Request } from '@cloudflare/workers-types';
+import { recommendSaavn } from './saavnRecommendations.js';
 
 export interface Env {
   LASTFM_API_KEY?: string;
@@ -112,6 +113,16 @@ export default {
           data = federatedSearch ? await recommendOpen(budget, id) : [];
           break;
         }
+        case 'saavn-recommendations': {
+          const id = searchParams.get('id') ?? '';
+          const title = searchParams.get('title') ?? '';
+          const artist = searchParams.get('artist') ?? '';
+          if (!/^[\w-]{1,64}$/.test(id) || !title || !artist || title.length > 200 || artist.length > 200) {
+            throw new InvalidCatalogRequest('Invalid JioSaavn seed');
+          }
+          data = await recommendSaavn(budget, id, title, artist);
+          break;
+        }
         case 'stream': {
           const id = searchParams.get('id');
           if (!id) throw new InvalidCatalogRequest('Missing id parameter');
@@ -154,7 +165,7 @@ export default {
           'Content-Type': 'application/json',
           // Preserve fallback payloads without letting transient failures stick in cache.
           'Cache-Control': !budget.cacheable || path === 'stream' ? 'no-store'
-            : path === 'search-discovery' || path === 'open-recommendations' || (archiveSearch && (path === 'search' || path === 'search-suggestions')) ? 'public, max-age=60, s-maxage=300'
+            : path === 'search-discovery' || path === 'open-recommendations' || path === 'saavn-recommendations' || (archiveSearch && (path === 'search' || path === 'search-suggestions')) ? 'public, max-age=60, s-maxage=300'
             : 's-maxage=86400, stale-while-revalidate=3600'
         }
       });

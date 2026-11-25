@@ -5,12 +5,15 @@ import type { TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 
 const supportedSeed = /^(?:audius:[A-Za-z0-9]{1,24}|openverse:[a-f0-9-]{36})$/i;
+const saavnId = /^jiosaavn:([\w-]{1,64})$/;
 
 export async function playCatalogSelection(songs: TrackItem[], index: number) {
     const player = usePlayerStore.getState();
     const seed = songs[index];
     if (!seed) return;
-    if (isNative() || useCatalogStore.getState().provider !== 'open-audio' || !supportedSeed.test(seed.id)) {
+    const catalog = useCatalogStore.getState().provider;
+    const saavn = catalog === 'jiosaavn' ? saavnId.exec(seed.id) : null;
+    if (isNative() || (!saavn && (catalog !== 'open-audio' || !supportedSeed.test(seed.id)))) {
         return player.setQueue(songs, index);
     }
 
@@ -19,7 +22,7 @@ export async function playCatalogSelection(songs: TrackItem[], index: number) {
     const isCurrent = () => {
         const state = usePlayerStore.getState();
         return Boolean(queueId && state.queue[state.queueIndex]?.queueId === queueId &&
-            state.currentSong?.id === seed.id && useCatalogStore.getState().provider === 'open-audio');
+            state.currentSong?.id === seed.id && useCatalogStore.getState().provider === catalog);
     };
     const request = new AbortController();
     const cancelIfStale = () => { if (!isCurrent()) request.abort(); };
@@ -29,8 +32,9 @@ export async function playCatalogSelection(songs: TrackItem[], index: number) {
         let tracks: TrackItem[] = [];
         try {
             const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
-            const params = new URLSearchParams({ id: seed.id });
-            const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/open-recommendations?${params}`, { signal });
+            const params = new URLSearchParams(saavn ? { id: saavn[1], title: seed.title, artist: seed.author } : { id: seed.id });
+            const path = saavn ? 'saavn-recommendations' : 'open-recommendations';
+            const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/${path}?${params}`, { signal });
             if (response.ok) {
                 const data = await response.json();
                 if (Array.isArray(data) && !signal.aborted) tracks = data;
@@ -44,13 +48,13 @@ export async function playCatalogSelection(songs: TrackItem[], index: number) {
             const queued = new Set(usePlayerStore.getState().queue.map(item => item.song.id));
             let added = 0;
             for (const track of tracks) {
-                if (!track || typeof track.id !== 'string' || !supportedSeed.test(track.id) || queued.has(track.id)) continue;
+                if (!track || typeof track.id !== 'string' || !(saavn ? saavnId : supportedSeed).test(track.id) || queued.has(track.id)) continue;
                 queued.add(track.id);
                 usePlayerStore.getState().addToQueue(track);
                 if (++added === 5) break;
             }
             // Preserve the browsing context when no related tracks can be queued.
-            if (!added) for (const track of [...songs.slice(index + 1), ...songs.slice(0, index)]) {
+            if (!saavn && !added) for (const track of [...songs.slice(index + 1), ...songs.slice(0, index)]) {
                 if (!supportedSeed.test(track.id) || queued.has(track.id)) continue;
                 queued.add(track.id);
                 usePlayerStore.getState().addToQueue(track);

@@ -558,7 +558,7 @@ export function HomePage() {
                                         song={song}
                                         index={index}
                                         highQualityArtwork
-                                        onPlay={() => void setQueue(globalTopTracks, index)}
+                                        onPlay={() => void playCatalogSelection(globalTopTracks, index)}
                                     />
                                 ))}
                             </div>
