@@ -48,7 +48,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           : "${VERCEL_TOKEN:?Set the VERCEL_TOKEN Actions secret}"
-          npx --yes vercel@54.4.1 deploy --cwd jiosaavn-api --prod --yes --token "$VERCEL_TOKEN"
+          npx --yes vercel@54.4.1 deploy --cwd jiosaavn-api --scope devsanthoshmks-projects --prod --yes --token "$VERCEL_TOKEN"
           curl --retry 3 --retry-all-errors --max-time 20 -fsS "https://m14u-jiosaavn.vercel.app/api/search/songs?query=hello&limit=1&verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" | jq -e '.success == true and (.data.results | length == 1)'
       - name: Record deployed upstream revision
         if: steps.sync.outputs.changed == 'true'
