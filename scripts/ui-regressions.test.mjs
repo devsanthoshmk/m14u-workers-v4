@@ -86,18 +86,71 @@ test('switching providers cancels the previous search and normalizes JioSaavn re
     assert.deepEqual(state().results, []);
     const next = state().search('music');
     assert.equal(requests[1].url, 'https://saavn.example.test/api/search/songs?query=music');
+    assert.match(requests[2].url, /catalog=youtube&f=song$/);
     requests[1].resolve(Response.json({ success: true, data: { results: [{ id: 'track-01', name: 'Song' }] } }));
     await next;
     requests[0].resolve(Response.json(tracks));
     await previous;
     assert.deepEqual(state().results.map(track => track.id), ['jiosaavn:track-01']);
     choose('open-audio');
+    assert.equal(requests[2].signal.aborted, true);
+    requests[2].resolve(Response.json([]));
     assert.deepEqual(state().results, []);
     const back = state().search('music');
-    assert.match(requests[2].url, /\/api\/search\?q=music$/);
-    requests[2].resolve(Response.json(tracks));
+    assert.match(requests[3].url, /\/api\/search\?q=music$/);
+    requests[3].resolve(Response.json(tracks));
     await back;
     assert.deepEqual(state().results, tracks);
+});
+
+test('JioSaavn discovery queues only catalog matches and ignores late alternatives after Clear', async (t) => {
+    const { choose } = useCatalogStore.getState();
+    choose('jiosaavn');
+    t.after(() => choose('open-audio'));
+    const state = useSearchStore.getState;
+    const seed = { id: 'abcdefghijk', title: 'Missing Song', author: 'Singer - Topic' };
+    const similar = { id: '12345678901', title: 'Similar Song', author: 'Singer' };
+    const saavn = results => Response.json({ success: true, data: { results } });
+    let hold = false;
+    let useArtistFallback = false;
+    let release;
+    const available = () => saavn([
+        { id: 'wrong', name: similar.title, primaryArtists: 'Other Singer' },
+        { id: 'correct', name: similar.title, primaryArtists: similar.author },
+    ]);
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    t.mock.method(globalThis, 'fetch', async input => {
+        const url = new URL(input, 'https://example.test');
+        if (url.pathname === '/api/search') return Response.json([seed]);
+        if (url.pathname === '/api/up-next') return Response.json(useArtistFallback ? [] : [seed, similar]);
+        if (url.searchParams.get('query') === 'Singer') return saavn([
+            { id: 'other', name: 'Other Song', primaryArtists: 'Singer' },
+            { id: 'unrelated', name: 'Unrelated Song', primaryArtists: 'Other Singer' },
+        ]);
+        if (url.searchParams.get('query') === 'Similar Song Singer') {
+            if (hold) return new Promise(resolve => { release = () => resolve(available()); });
+            return available();
+        }
+        return saavn([]);
+    });
+    await state().search(seed.title);
+    await flush();
+    assert.equal(state().discovery.song.title, seed.title);
+    assert.deepEqual(state().discovery.alternatives.map(track => track.id), ['jiosaavn:correct']);
+    hold = true;
+    await state().search(seed.title);
+    await flush();
+    assert.equal(state().discovery.loading, true);
+    state().clearSearch();
+    release();
+    await flush();
+    assert.equal(state().discovery, null);
+    assert.deepEqual(state().results, []);
+    useArtistFallback = true;
+    await state().search(seed.title);
+    await flush();
+    assert.equal(state().discovery.sameArtist, true);
+    assert.deepEqual(state().discovery.alternatives.map(track => track.id), ['jiosaavn:other']);
 });
 
 test('catalog views keep saved JioSaavn and Open Audio tracks separate', () => {

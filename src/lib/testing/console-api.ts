@@ -109,6 +109,16 @@ const api = {
   },
 
   // --- Playback ---
+  async playAlternative(index: number) {
+    return actAsync('playAlternative', async () => {
+      const { discovery, query } = search();
+      if (!discovery || !isQueueIndex(index, discovery.alternatives.length)) {
+        throw new Error(`playAlternative: no alternative at index ${index} for "${query}"`);
+      }
+      await player().setQueue(discovery.alternatives, index);
+    });
+  },
+
   async play(songOrIndex?: TrackItem | number | string) {
     return actAsync('play', async () => {
       if (songOrIndex === undefined) {
@@ -302,7 +312,7 @@ const api = {
   help() {
     const cmds = [
       'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
-      'play(songOrIndex?)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
+      'play(songOrIndex?)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',
       'queue.playAt(i)', 'queue.reorder(from,to)', 'queue.length()',

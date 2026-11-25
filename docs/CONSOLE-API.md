@@ -159,3 +159,6 @@ These commands throw on Android. `favorites.list()` and `history()` read the sav
 |---|---|---|
 | `help()` | Print all commands | `m14u.help()` |
 | `version()` | API version | `m14u.version()` |
+## JioSaavn alternatives
+
+`await m14u.playAlternative(index)` queues the current JioSaavn alternatives and starts the zero-based selection. Inspect `m14u.state.search().discovery` for discovery results.

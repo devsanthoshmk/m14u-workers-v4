@@ -31,6 +31,7 @@ export function SearchPage() {
     const search = useSearchStore(s => s.search);
     const searchedTerm = useSearchStore(s => s.query);
     const results = useSearchStore(s => s.results);
+    const songDiscovery = useSearchStore(s => s.discovery);
     const loading = useSearchStore(s => s.isLoading);
     const error = useSearchStore(s => s.error);
     const clearSearch = useSearchStore(s => s.clearSearch);
@@ -89,10 +90,11 @@ export function SearchPage() {
     const pending = Boolean(term && (!current || loading));
     const failed = current && Boolean(error);
     const empty = current && !loading && !failed && songs.length === 0;
+    const resultsLabel = current && songDiscovery ? 'JioSaavn results' : `${songs.length} ${songs.length === 1 ? 'result' : 'results'}`;
     const announcement = pending ? 'Searching…'
         : failed ? 'Search couldn’t load.'
         : empty ? `No songs found for “${term}”.`
-        : songs.length ? `${songs.length} result${songs.length === 1 ? '' : 's'} for “${term}”.`
+        : songs.length ? `${resultsLabel} for “${term}”.`
         : '';
 
     const handlePlayFromResults = (index: number) => {
@@ -242,7 +244,7 @@ export function SearchPage() {
                     </div>
                 )}
 
-                {(failed || empty) && (
+                {(failed || (empty && !songDiscovery)) && (
                     <div className="max-w-2xl rounded-xl border border-border bg-surface px-4 py-5 sm:px-5">
                         <h2 className="font-heading font-bold [overflow-wrap:anywhere]">{announcement}</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -265,6 +267,29 @@ export function SearchPage() {
                     </div>
                 )}
 
+                {current && songDiscovery && (
+                    <section aria-labelledby="similar-songs-heading" className="mb-6 max-w-2xl rounded-xl bg-surface px-4 py-5 sm:px-5">
+                        <h2 id="similar-songs-heading" className="font-heading font-bold [overflow-wrap:anywhere]">
+                            Looking for “{songDiscovery.song.title}” by {songDiscovery.song.author}?
+                        </h2>
+                        <p role="status" className="mt-1 text-sm text-muted-foreground">
+                            We found it on YouTube Music, but couldn’t find a matching track on JioSaavn.{' '}
+                            {songDiscovery.loading ? 'Checking similar songs on JioSaavn…'
+                                : songDiscovery.alternatives.length ? (songDiscovery.sameArtist
+                                    ? 'No similar songs matched. Try these other songs by the artist on JioSaavn.'
+                                    : 'Try these similar songs on JioSaavn.')
+                                : 'No matching alternatives found.'}
+                        </p>
+                        {songDiscovery.alternatives.length > 0 && (
+                            <div className="mt-3">
+                                {songDiscovery.alternatives.map((song, index) => (
+                                    <SongRow key={song.id} song={song} index={index} onPlay={() => void setQueue(songDiscovery.alternatives, index)} />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                )}
+
                 {(!term || empty) && discovery.tracks.length > 0 && (
                     <section aria-labelledby="discovery-heading" className="mt-6 max-w-2xl border-t border-border pt-4">
                         <h2 id="discovery-heading" className="mb-2 font-heading text-base font-bold">{empty ? 'Play something else' : 'Start listening'}</h2>
@@ -278,7 +303,7 @@ export function SearchPage() {
                     <section aria-labelledby="search-results-heading">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                             <h2 id="search-results-heading" className="font-heading text-base font-bold">
-                                {songs.length} {songs.length === 1 ? 'result' : 'results'}
+                                {resultsLabel}
                             </h2>
                             <div role="group" aria-label="Results layout" className="flex gap-1 rounded-lg bg-surface p-1">
                                 {(['list', 'grid'] as const).map(mode => (

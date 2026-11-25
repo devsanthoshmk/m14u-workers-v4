@@ -19,6 +19,21 @@ beforeEach(t => {
   t.mock.method(Innertube, 'create', () => { throw new Error('Unexpected Innertube setup'); });
 });
 
+test('up-next validates the seed and returns only distinct recommendation identities', async t => {
+  assert.equal((await request('up-next?id=invalid')).status, 400);
+  const seed = 'abcdefghijk';
+  const video = (id, title) => Object.assign(Object.create(YTNodes.PlaylistPanelVideo.prototype), {
+    type: YTNodes.PlaylistPanelVideo.type, video_id: id, title, author: 'Singer',
+  });
+  t.mock.method(Innertube, 'create', async () => ({ music: { async getUpNext(id) {
+    assert.equal(id, seed);
+    return { contents: [video(seed, 'Seed'), video('12345678901', 'Similar'), video('12345678901', 'Duplicate')] };
+  } } }));
+  const response = await request(`up-next?id=${seed}`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), [{ id: '12345678901', title: 'Similar', author: 'Singer' }]);
+});
+
 test('YouTube mode skips open discovery on an Open Audio deployment', async () => {
   const result = await request('search-discovery?catalog=youtube', 'GET', { MUSIC_CATALOG: 'open' });
   assert.equal(result.status, 200);

@@ -7,6 +7,7 @@ import getSearch from './getSearch.js';
 import getSearchSuggestions from './getSearchSuggestions.js';
 import getSimilar from './getSimilar.js';
 import getSubFeed from './getSubFeed.js';
+import getUpNext from './getUpNext.js';
 import { ProviderBudget, ProviderTimeout } from './providerBudget.js';
 import { searchArchive, suggestArchive } from './archiveCatalog.js';
 import { featuredOpen, resolveOpen, searchOpen, suggestOpen } from './openCatalog.js';
@@ -110,6 +111,12 @@ export default {
           if (!id) throw new InvalidCatalogRequest('Missing id parameter');
           data = await resolveOpen(budget, id);
           if (!data) throw new TrackNotFound();
+          break;
+        }
+        case 'up-next': {
+          const id = searchParams.get('id');
+          if (!id || !/^[\w-]{11}$/.test(id)) throw new InvalidCatalogRequest('Invalid YouTube ID');
+          data = await getUpNext(budget, id);
           break;
         }
         case 'similar': {
