@@ -10,6 +10,7 @@ import { toTrackItem } from '@/utils/trackMetadata';
 import { cn } from '@/lib/utils';
 import type { Song, TrackItem } from '@/types/music';
 import { useState, useRef, useEffect } from 'react';
+import { TrackArtwork } from './TrackArtwork';
 
 interface SongRowProps {
     song: TrackItem | Song;
@@ -40,7 +41,9 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
 
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 60) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
+    const videoId = track.videoId || songId;
+    const artwork = [...new Set([songImg, songThumbnails && getThumbnail(songThumbnails, 60),
+        /^[\w-]{11}$/.test(videoId) && `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`].filter((url): url is string => !!url))];
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -88,11 +91,7 @@ export function SongRow({ song, index = 0, showIndex = false, onPlay }: SongRowP
 
             {/* Thumbnail */}
             <div className="h-10 w-10 flex-shrink-0 rounded overflow-hidden bg-muted">
-                {thumbnail ? (
-                    <img src={thumbnail} alt={songTitle} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                    <div className="h-full w-full bg-white/10" />
-                )}
+                <TrackArtwork seed={songId || songTitle} sources={artwork} className="size-full object-cover" lazy />
             </div>
 
             {/* Song info */}

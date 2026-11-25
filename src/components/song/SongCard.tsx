@@ -12,6 +12,8 @@ import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-re
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
 import type { Song, TrackItem } from '@/types/music';
+import { TrackArtwork } from './TrackArtwork';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 
 interface SongCardProps {
     song: TrackItem | Song;
@@ -40,28 +42,15 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
     const isFavorite = usePlayerStore(s => songId ? s.isFavorite(songId) : false);
 
     const [showMenu, setShowMenu] = useState(false);
-    const [artworkFallback, setArtworkFallback] = useState({ key: '', index: 0 });
     const menuRef = useRef<HTMLDivElement>(null);
 
     const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
-    const defaultThumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 300) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
-    const suppliedThumbnails = highQualityArtwork ? [...(songThumbnails ?? [])].sort((a, b) => b.width - a.width) : [];
-    const suppliedArt = suppliedThumbnails[0]?.url || songImg;
-    const largerCover = suppliedArt?.replace(
-        /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
-        '$1=w800-h800',
-    );
-    const artworkUrls = highQualityArtwork ? [...new Set([
-        largerCover !== suppliedArt ? largerCover : undefined,
-        suppliedThumbnails[0]?.width >= 800 ? suppliedArt : undefined,
-        songId ? `https://i.ytimg.com/vi/${track.videoId || songId}/maxresdefault.jpg` : undefined,
-        ...suppliedThumbnails.map(({ url }) => url),
-        defaultThumbnail,
-    ].filter((url): url is string => !!url))] : [defaultThumbnail];
-    const artworkKey = JSON.stringify(artworkUrls);
-    const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
-    const thumbnail = artworkUrls[artworkIndex];
+    const videoId = track.videoId || songId;
+    const artworkUrls = highQualityArtwork ? trackArtworkUrls(track) : [...new Set([
+        songImg, songThumbnails && getThumbnail(songThumbnails, 300),
+        /^[\w-]{11}$/.test(videoId) && `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    ].filter((url): url is string => !!url))];
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -87,17 +76,7 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
         <div className="group relative flex flex-col p-2 rounded-xl transition-colors hover:bg-white/[0.04]">
             {/* Album art container */}
             <div className="relative aspect-square rounded-lg overflow-hidden mb-2.5 bg-surface">
-                {thumbnail ? (
-                    <img
-                        src={thumbnail}
-                        onError={highQualityArtwork ? () => setArtworkFallback({ key: artworkKey, index: artworkIndex + 1 }) : undefined}
-                        alt={songTitle}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                    />
-                ) : (
-                    <div className="h-full w-full bg-white/10" />
-                )}
+                <TrackArtwork seed={songId || songTitle} sources={artworkUrls} className="size-full object-cover" lazy />
 
                 {/* Duration badge */}
                 {!!songDuration && (

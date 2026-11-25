@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { TrackArtworkFallback } from '@/components/song/TrackArtwork';
 import {
     ChevronDown,
     Heart,
@@ -139,13 +140,14 @@ export function NowPlayingPage() {
         /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
         '$1=w800-h800',
     );
+    const youtubeArtwork = songId && /^[\w-]{11}$/.test(songId) ? `https://i.ytimg.com/vi/${songId}` : '';
     const artworkUrls = [...new Set<string>([
         fullSizeCover !== suppliedArt ? fullSizeCover : '',
         thumbnails[0]?.width >= 800 ? suppliedArt : '',
-        songId ? `https://i.ytimg.com/vi/${songId}/maxresdefault.jpg` : '',
+        youtubeArtwork ? `${youtubeArtwork}/maxresdefault.jpg` : '',
         ...thumbnails.map(thumbnail => thumbnail.url),
         suppliedArt,
-        songId ? `https://i.ytimg.com/vi/${songId}/hqdefault.jpg` : '',
+        youtubeArtwork ? `${youtubeArtwork}/hqdefault.jpg` : '',
     ].filter((url): url is string => !!url))];
     const artworkKey = JSON.stringify([songId, artworkUrls]);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
@@ -286,9 +288,7 @@ export function NowPlayingPage() {
                                             className="size-full object-cover aspect-square transition-transform duration-700 motion-reduce:transition-none"
                                         />
                                     ) : (
-                                        <div className="size-full flex items-center justify-center bg-surface">
-                                            <Music2 className="size-20 text-muted-foreground" />
-                                        </div>
+                                        <TrackArtworkFallback seed={currentSong.id || title} className="size-full" />
                                     )}
                                 </div>
                             )}
@@ -489,9 +489,7 @@ export function NowPlayingPage() {
                                         className="size-full object-cover aspect-square transition-transform duration-700 motion-reduce:transition-none"
                                     />
                                 ) : (
-                                    <div className="size-full flex items-center justify-center bg-surface">
-                                        <Music2 className="size-20 text-muted-foreground" />
-                                    </div>
+                                    <TrackArtworkFallback seed={currentSong.id || title} className="size-full" />
                                 )}
                             </div>
 
@@ -904,9 +902,7 @@ export function NowPlayingPage() {
                                 {art ? (
                                     <img src={art} onError={handleArtworkError} alt={title} className="size-12 rounded-xl object-cover shrink-0 ring-1 ring-white/10" />
                                 ) : (
-                                    <div className="size-12 rounded-xl bg-surface grid place-items-center shrink-0">
-                                        <Music2 className="size-6 text-muted-foreground" />
-                                    </div>
+                                    <TrackArtworkFallback seed={currentSong.id || title} className="size-12 rounded-xl shrink-0" />
                                 )}
                                 <div className="min-w-0 flex-1">
                                     <h3 className="font-heading text-sm font-bold text-foreground truncate">{title}</h3>

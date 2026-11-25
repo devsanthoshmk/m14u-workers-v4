@@ -4,6 +4,7 @@
  */
 
 import { PlaybackError } from './PlaybackError';
+import { TrackArtwork } from '@/components/song/TrackArtwork';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -64,7 +65,9 @@ export function PlayerBar() {
     const songThumbnails = currentSong.thumbnails;
     const songImg = currentSong.img;
 
-    const thumbnail = songImg || (songThumbnails ? getThumbnail(songThumbnails, 120) : '') || `https://i.ytimg.com/vi/${songId}/mqdefault.jpg`;
+    const videoId = currentSong.videoId || songId;
+    const artwork = [...new Set([songImg, songThumbnails && getThumbnail(songThumbnails, 120),
+        /^[\w-]{11}$/.test(videoId) && `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`].filter((url): url is string => !!url))];
     const isFavorite = songId ? usePlayerStore.getState().isFavorite(songId) : false;
 
     const displayTime = isSeeking ? seekValue : currentTime;
@@ -105,15 +108,7 @@ export function PlayerBar() {
                         className="group/art relative size-12 md:size-[52px] flex-shrink-0 rounded-xl overflow-hidden ring-1 ring-white/15 shadow-md text-left"
                         aria-label="Open full screen now playing"
                     >
-                        {thumbnail ? (
-                            <img
-                                src={thumbnail}
-                                alt={songTitle}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover/art:scale-105"
-                            />
-                        ) : (
-                            <div className="h-full w-full bg-white/10" />
-                        )}
+                        <TrackArtwork seed={songId || songTitle} sources={artwork} className="size-full object-cover transition-transform duration-300 group-hover/art:scale-105" />
 
                         {/* Animated wave overlay when playing */}
                         {isPlaying && !isBuffering && (
