@@ -25,12 +25,14 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useState, useCallback } from 'react';
 import type { TrackItem } from '@/types/music';
+import { useSlowLoading } from '@/hooks/useSlowLoading';
 
 export function PlayerBar() {
     const navigate = useNavigate();
     const currentSong = usePlayerStore(s => s.currentSong);
     const isPlaying = usePlayerStore(s => s.isPlaying);
     const isBuffering = usePlayerStore(s => s.isBuffering);
+    const slowPlayback = useSlowLoading(isBuffering, currentSong?.videoId || currentSong?.id || '');
     const currentTime = usePlayerStore(s => s.currentTime);
     const duration = usePlayerStore(s => s.duration);
     const toggleFavorite = usePlayerStore(s => s.toggleFavorite);
@@ -80,6 +82,9 @@ export function PlayerBar() {
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
             className="flex-shrink-0 relative z-30 bg-background/90 backdrop-blur-2xl border-t border-white/[0.08] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]"
         >
+            <p role="status" className={slowPlayback ? 'px-3 py-1.5 text-xs text-muted-foreground md:px-6' : 'sr-only'}>
+                {slowPlayback ? 'Still loading audio. This is taking longer than usual.' : ''}
+            </p>
             {/* Full-width seekbar along top edge (desktop) */}
             <div className="hidden md:block px-0 relative -mt-[3px]">
                 <Slider.Root

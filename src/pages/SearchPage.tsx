@@ -11,6 +11,7 @@ import { API_BASE_URL, DEBOUNCE } from '@/utils/constants';
 import { isNative } from '@/lib/utils/platform';
 import { useCatalogStore } from '@/stores/catalogStore';
 import type { TrackItem } from '@/types/music';
+import { useSlowLoading } from '@/hooks/useSlowLoading';
 
 const SUGGESTIONS = ['Lofi', 'Jazz', 'Ambient', 'Piano'];
 
@@ -88,10 +89,13 @@ export function SearchPage() {
     const current = Boolean(term && searchedTerm === term);
     const songs = current ? results.filter((r): r is TrackItem => r.type === 'song' || r.type === 'video') : [];
     const pending = Boolean(term && (!current || loading));
+    const slowSearch = useSlowLoading(current && loading, term);
+    const slowDiscovery = useSlowLoading(current && Boolean(songDiscovery?.loading), term);
+    const searchStatus = slowSearch ? 'Still searching. The music service may be waking up.' : 'Searching…';
     const failed = current && Boolean(error);
     const empty = current && !loading && !failed && songs.length === 0;
     const resultsLabel = current && songDiscovery ? 'JioSaavn results' : `${songs.length} ${songs.length === 1 ? 'result' : 'results'}`;
-    const announcement = pending ? 'Searching…'
+    const announcement = pending ? searchStatus
         : failed ? 'Search couldn’t load.'
         : empty ? `No songs found for “${term}”.`
         : songs.length ? `${resultsLabel} for “${term}”.`
@@ -239,8 +243,8 @@ export function SearchPage() {
 
                 {pending && (
                     <div aria-hidden="true" className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
-                        <Loader2 className="h-5 w-5 text-primary motion-safe:animate-spin" />
-                        Searching…
+                        <Loader2 className="h-5 w-5 shrink-0 text-primary motion-safe:animate-spin" />
+                        {searchStatus}
                     </div>
                 )}
 
@@ -248,7 +252,7 @@ export function SearchPage() {
                     <div className="max-w-2xl rounded-xl border border-border bg-surface px-4 py-5 sm:px-5">
                         <h2 className="font-heading font-bold [overflow-wrap:anywhere]">{announcement}</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            {failed ? 'Check your connection and try again.' : discovery.openCatalog
+                            {failed ? 'The music service may still be starting. Try your search again.' : discovery.openCatalog
                                 ? 'That recording may not be in our open catalog. Try the artist’s name, a shorter title, or a genre.'
                                 : 'Check the spelling or try a different song or artist.'}
                         </p>
@@ -274,7 +278,9 @@ export function SearchPage() {
                         </h2>
                         <p role="status" className="mt-1 text-sm text-muted-foreground">
                             We found it on YouTube Music, but couldn’t find a matching track on JioSaavn.{' '}
-                            {songDiscovery.loading ? 'Checking similar songs on JioSaavn…'
+                            {songDiscovery.loading ? (slowDiscovery
+                                ? 'Still checking for similar songs. The music service is taking longer than usual.'
+                                : 'Checking similar songs on JioSaavn…')
                                 : songDiscovery.alternatives.length ? (songDiscovery.sameArtist
                                     ? 'No similar songs matched. Try these other songs by the artist on JioSaavn.'
                                     : 'Try these similar songs on JioSaavn.')
