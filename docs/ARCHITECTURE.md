@@ -25,6 +25,8 @@ Both API entry points use handlers in [`src/backend/`](../src/backend/). Those h
 
 ## From track selection to playback
 
+On web, selecting an Audius or Openverse–Jamendo song from Search starts it immediately and requests `/api/open-recommendations?id=…`. The Worker ranks remix relationships, same-artist tracks, and shared tags using the existing catalog eligibility checks. Up to five results append to the same queue without moving manually queued tracks. If none can be added, the player falls back to Audius and Jamendo tracks from the same browsing list. A stale response cannot refill a cleared or replaced queue. Play All, unsupported seeds, JioSaavn, and Android retain their existing queue behavior.
+
 1. The player store takes a track’s video ID and asks [`getStreamData.ts`](../src/lib/modules/getStreamData.ts) for playable formats. This module caches successful resolutions in memory for five minutes.
 2. Open track IDs resolve through the Worker. `jiosaavn:` IDs resolve to Render's `/api/audio/:id` relay on web, regardless of the selected catalog. For YouTube tracks, Android races bundled NewPipe extraction against the optional signed JavaScript resolver and falls back to Invidious; the browser starts with Invidious. The first Invidious attempt uses `VITE_INVIDIOUS_URL`, the saved provider, or the first default, in that order. Normal playback can try the remaining defaults; prefetch skips that fallback pool.
 3. Web plays through `HTMLAudioElement`. Android passes the stream and queue to Media3/ExoPlayer through Capacitor. The Worker does not relay audio; Render relays JioSaavn audio with byte-range support. A provider returning formats does not prove the media URL will load or seek successfully.

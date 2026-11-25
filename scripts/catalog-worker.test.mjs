@@ -40,6 +40,34 @@ test('YouTube mode skips open discovery on an Open Audio deployment', async () =
   assert.deepEqual(await result.json(), { openCatalog: false, tracks: [] });
 });
 
+test('Open Audio queues only relevant, eligible tracks and tolerates a provider failure', async t => {
+  const track = (id, fields = {}) => ({ id, title: `Track ${id}`, permalink: `/artist/${id}`, duration: 180,
+    license: 'CC0', is_streamable: true, access: { stream: true }, user: { id: 'owner', name: 'Artist' }, ...fields });
+  const seed = track('seed', { tags: 'lo-fi' });
+  t.mock.method(globalThis, 'fetch', async input => {
+    const { hostname, pathname } = new URL(input);
+    if (hostname === 'api.openverse.org') return new Response(null, { status: 429 });
+    assert.equal(hostname, 'api.audius.co');
+    switch (pathname) {
+      case '/v1/tracks/seed': return Response.json({ data: seed });
+      case '/v1/tracks/seed/remixes': return Response.json({ data: { tracks: [track('mix'), track('gated', { access: { stream: false } })] } });
+      case '/v1/tracks/seed/remixing': return Response.json({ data: [] });
+      case '/v1/users/owner/tracks': return Response.json({ data: [seed, track('same'), track('mix')] });
+      case '/v1/tracks/search': return Response.json({ data: [track('related', { tags: 'lo-fi', user: { id: 'other', name: 'Other Artist' } }),
+        track('irrelevant', { tags: 'metal', user: { id: 'someone', name: 'Someone' } })] });
+      default: throw new Error(`Unexpected provider path: ${pathname}`);
+    }
+  });
+  const env = { MUSIC_CATALOG: 'open' };
+  const response = await request('open-recommendations?id=audius:seed', 'GET', env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  const tracks = await response.json();
+  assert.deepEqual(tracks.map(item => item.id), ['audius:mix', 'audius:same', 'audius:related']);
+  assert.ok(tracks.every(item => !('url' in item) && !('adaptiveFormats' in item)));
+  assert.deepEqual(await (await request('open-recommendations?id=freetouse:excluded', 'GET', env)).json(), []);
+});
+
 test('open search resolves the exact public MP3 with artwork, without Innertube', async t => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async input => {

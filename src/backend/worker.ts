@@ -10,7 +10,7 @@ import getSubFeed from './getSubFeed.js';
 import getUpNext from './getUpNext.js';
 import { ProviderBudget, ProviderTimeout } from './providerBudget.js';
 import { searchArchive, suggestArchive } from './archiveCatalog.js';
-import { featuredOpen, resolveOpen, searchOpen, suggestOpen } from './openCatalog.js';
+import { featuredOpen, recommendOpen, resolveOpen, searchOpen, suggestOpen } from './openCatalog.js';
 import type { Request } from '@cloudflare/workers-types';
 
 export interface Env {
@@ -106,6 +106,12 @@ export default {
           data = { openCatalog: archiveSearch, tracks: federatedSearch ? await featuredOpen(budget) : [] };
           break;
         }
+        case 'open-recommendations': {
+          const id = searchParams.get('id');
+          if (!id || id.length > 64) throw new InvalidCatalogRequest('Invalid Open Audio ID');
+          data = federatedSearch ? await recommendOpen(budget, id) : [];
+          break;
+        }
         case 'stream': {
           const id = searchParams.get('id');
           if (!id) throw new InvalidCatalogRequest('Missing id parameter');
@@ -148,7 +154,7 @@ export default {
           'Content-Type': 'application/json',
           // Preserve fallback payloads without letting transient failures stick in cache.
           'Cache-Control': !budget.cacheable || path === 'stream' ? 'no-store'
-            : path === 'search-discovery' || (archiveSearch && (path === 'search' || path === 'search-suggestions')) ? 'public, max-age=60, s-maxage=300'
+            : path === 'search-discovery' || path === 'open-recommendations' || (archiveSearch && (path === 'search' || path === 'search-suggestions')) ? 'public, max-age=60, s-maxage=300'
             : 's-maxage=86400, stale-while-revalidate=3600'
         }
       });

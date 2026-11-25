@@ -12,6 +12,7 @@ import { isNative } from '@/lib/utils/platform';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useListeningPreferences } from '@/stores/listeningPreferences';
 import { normalizeMusicLanguage } from '@/lib/utils/musicLanguage';
+import { playCatalogSelection } from '@/services/catalogPlayback';
 
 const player = () => usePlayerStore.getState();
 const ui = () => useUIStore.getState();
@@ -140,6 +141,15 @@ const api = {
   },
 
   // --- Playback ---
+  async playSearchResult(index: number) {
+    return actAsync('playSearchResult', async () => {
+      const { results, query } = search();
+      const songs = results.filter((r): r is TrackItem => r.type === 'song' || r.type === 'video');
+      if (!isQueueIndex(index, songs.length)) throw new Error(`playSearchResult: no song at index ${index} for "${query}"`);
+      await playCatalogSelection(songs, index);
+    });
+  },
+
   async playAlternative(index: number) {
     return actAsync('playAlternative', async () => {
       const { discovery, query } = search();
@@ -343,7 +353,7 @@ const api = {
   help() {
     const cmds = [
       'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
-      'play(songOrIndex?)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
+      'play(songOrIndex?)', 'playSearchResult(index)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',
       'queue.playAt(i)', 'queue.reorder(from,to)', 'queue.length()',

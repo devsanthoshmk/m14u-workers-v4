@@ -162,3 +162,5 @@ These commands throw on Android. `favorites.list()` and `history()` read the sav
 ## JioSaavn alternatives
 
 `await m14u.playAlternative(index)` queues the current JioSaavn alternatives and starts the zero-based selection. Inspect `m14u.state.search().discovery` for discovery results.
+
+`await m14u.playSearchResult(index)` mirrors tapping a song in Search, including the Open Audio recommendation queue. The index is zero-based among song and video results.

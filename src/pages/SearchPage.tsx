@@ -12,6 +12,7 @@ import { isNative } from '@/lib/utils/platform';
 import { useCatalogStore } from '@/stores/catalogStore';
 import type { TrackItem } from '@/types/music';
 import { useSlowLoading } from '@/hooks/useSlowLoading';
+import { playCatalogSelection } from '@/services/catalogPlayback';
 
 const SUGGESTIONS = ['Lofi', 'Jazz', 'Ambient', 'Piano'];
 
@@ -102,7 +103,7 @@ export function SearchPage() {
         : '';
 
     const handlePlayFromResults = (index: number) => {
-        void setQueue(songs, index);
+        void playCatalogSelection(songs, index);
     };
 
     return (
@@ -300,7 +301,7 @@ export function SearchPage() {
                     <section aria-labelledby="discovery-heading" className="mt-6 max-w-2xl border-t border-border pt-4">
                         <h2 id="discovery-heading" className="mb-2 font-heading text-base font-bold">{empty ? 'Play something else' : 'Start listening'}</h2>
                         {discovery.tracks.map((song, index) => (
-                            <SongRow key={song.id} song={song} index={index} onPlay={() => void setQueue(discovery.tracks, index)} />
+                            <SongRow key={song.id} song={song} index={index} onPlay={() => void playCatalogSelection(discovery.tracks, index)} />
                         ))}
                     </section>
                 )}

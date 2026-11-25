@@ -14,8 +14,16 @@ const audiusId = /^[A-Za-z0-9]{1,24}$/;
 type OpenTrack = TrackItem & { sourceUrl: string };
 type Recording = OpenTrack & { url: string; mime: string; encoding: string };
 
+function recordingMetadata(track: Recording): OpenTrack {
+  const metadata: OpenTrack & Partial<Pick<Recording, 'url' | 'mime' | 'encoding'>> = { ...track };
+  delete metadata.url;
+  delete metadata.mime;
+  delete metadata.encoding;
+  return metadata;
+}
+
 type IndexedAudio = { id: string; title: string; creator: string; category: string; source: string; url: string;
-  duration: number; license_url?: string; foreign_landing_url?: string };
+  duration: number; license_url?: string; foreign_landing_url?: string; tags?: { name?: string }[] };
 type FreeTrack = { id: string; title: string; genre?: string; status: number; is_premium: boolean; duration: number;
   artists?: [number, { name: string }][]; files?: { mp3?: string }; thumbnails?: { md?: string } };
 
@@ -85,7 +93,8 @@ async function commonsTracks(budget: ProviderBudget, query: Record<string, strin
 }
 
 type AudiusTrack = { id: string; title: string; permalink?: string; duration?: number; license?: string; is_streamable?: boolean;
-  access?: { stream?: boolean }; user?: { name?: string }; artwork?: { '150x150'?: string; '480x480'?: string } };
+  genre?: string; mood?: string; tags?: string; access?: { stream?: boolean }; user?: { id?: string; name?: string };
+  artwork?: { '150x150'?: string; '480x480'?: string } };
 
 function audiusTrack(track: AudiusTrack): Recording | null {
   if (!track?.is_streamable || track.access?.stream !== true || !audiusId.test(track.id) || !track.title) return null;
@@ -113,6 +122,87 @@ function searchSongProviders(budget: ProviderBudget, q: string) {
   ];
 }
 
+const normalize = (value: string) => value.normalize('NFKC').trim().toLowerCase();
+const tags = (values: unknown[]) => [...new Set(values.flatMap(value => {
+  if (typeof value !== 'string') return [];
+  const tag = normalize(value);
+  return tag.length >= 3 && tag.length <= 40 && !['music', 'audio', 'song', 'original', 'other', 'unknown'].includes(tag) ? [tag] : [];
+}))];
+
+type Candidate = { track: Recording; tags: string[]; artistId?: string; relation?: boolean };
+function audiusCandidate(raw: AudiusTrack): Candidate[] {
+  const track = audiusTrack(raw);
+  return track ? [{ track, artistId: raw.user?.id, tags: tags([
+    ...(typeof raw.tags === 'string' ? raw.tags.split(',').slice(0, 16) : []), raw.genre, raw.mood,
+  ]) }] : [];
+}
+
+function indexedCandidate(raw: IndexedAudio): Candidate[] {
+  const track = indexedTrack(raw);
+  return track ? [{ track, tags: tags(Array.isArray(raw.tags) ? raw.tags.slice(0, 16).map(tag => tag?.name) : []) }] : [];
+}
+
+export async function recommendOpen(budget: ProviderBudget, id: string): Promise<TrackItem[]> {
+  const [provider, key, extra] = id.split(':');
+  if (!key || extra !== undefined) return [];
+  const audiusSeed = provider === 'audius' && audiusId.test(key);
+  const indexedSeed = provider === 'openverse' && uuid.test(key);
+  if (!audiusSeed && !indexedSeed) return [];
+
+  async function optional<T>(lookup: Promise<T>): Promise<T | undefined> {
+    try { return await lookup; } catch { budget.markDegraded(); }
+  }
+
+  const seed = audiusSeed
+    ? (await optional(json<{ data?: AudiusTrack }>(budget, `${audius}/${key}`)))?.data
+    : await optional(json<IndexedAudio>(budget, `${openverse}${key}/`, { Accept: 'application/json' }));
+  if (!seed) return [];
+  const [anchor] = 'creator' in seed ? indexedCandidate(seed) : audiusCandidate(seed);
+  if (!anchor || anchor.track.id !== id) return [];
+
+  const lookups: (() => Promise<Candidate[]>)[] = [];
+  if (audiusSeed) {
+    lookups.push(async () => ((await optional(json<{ data?: { tracks?: AudiusTrack[] } }>(budget,
+      `${audius}/${key}/remixes?limit=12`)))?.data?.tracks ?? []).flatMap(audiusCandidate).map(item => ({ ...item, relation: true })));
+    lookups.push(async () => ((await optional(json<{ data?: AudiusTrack[] }>(budget,
+      `${audius}/${key}/remixing`)))?.data ?? []).flatMap(audiusCandidate).map(item => ({ ...item, relation: true })));
+    const artistId = anchor.artistId;
+    if (artistId && audiusId.test(artistId)) lookups.push(async () => ((await optional(json<{ data?: AudiusTrack[] }>(budget,
+      `https://api.audius.co/v1/users/${artistId}/tracks?limit=12`)))?.data ?? []).flatMap(audiusCandidate));
+  }
+  const tag = anchor.tags[0];
+  const indexedQuery = (filter: Record<string, string>) => async () => ((await optional(json<{ results?: IndexedAudio[] }>(budget,
+    `${openverse}?${new URLSearchParams({ category: 'music', source: 'jamendo', license: 'by,by-sa,cc0,pdm', page_size: '12', ...filter })}`,
+    { Accept: 'application/json' })))?.results ?? []).flatMap(indexedCandidate);
+  if (indexedSeed) lookups.push(indexedQuery({ creator: anchor.track.author.slice(0, 100) }));
+  if (tag) {
+    lookups.push(indexedQuery({ tags: tag }));
+    lookups.push(async () => ((await optional(json<{ data?: AudiusTrack[] }>(budget,
+      `${audius}/search?${new URLSearchParams({ query: tag, limit: '12' })}`)))?.data ?? []).flatMap(audiusCandidate));
+  }
+
+  const candidates = (await budget.map(lookups, lookup => optional(lookup()))).flatMap(group => group ?? []);
+  const author = normalize(anchor.track.author);
+  const seen = new Set([id]);
+  const artistCounts = new Map<string, number>();
+  return candidates.flatMap(candidate => {
+    const { track } = candidate;
+    if (nonSong.test(`${track.title} ${track.author}`)) return [];
+    const sameArtist = audiusSeed ? Boolean(anchor.artistId && anchor.artistId === candidate.artistId)
+      : track.id.startsWith('openverse:') && author === normalize(track.author);
+    const shared = candidate.tags.filter(value => anchor.tags.includes(value)).length;
+    const score = (candidate.relation ? 100 : 0) + (sameArtist ? 20 : 0) + Math.min(shared, 4) * 4;
+    return score ? [{ track, score }] : [];
+  }).sort((a, b) => b.score - a.score).flatMap(({ track }) => {
+    const artist = normalize(track.author);
+    const count = artistCounts.get(artist) ?? 0;
+    if (seen.has(track.id) || count >= 3) return [];
+    seen.add(track.id);
+    artistCounts.set(artist, count + 1);
+    return [recordingMetadata(track)];
+  }).slice(0, 5);
+}
+
 export async function searchOpen(budget: ProviderBudget, q: string): Promise<TrackItem[]> {
   const results = await Promise.allSettled(searchSongProviders(budget, q));
   if (results.some(result => result.status === 'rejected')) budget.markDegraded();
@@ -127,11 +217,7 @@ export async function searchOpen(budget: ProviderBudget, q: string): Promise<Tra
       const track = group[i];
       if (!track || tracks.has(track.id) || nonSong.test(`${track.title} ${track.author}`)) continue;
       // Do not expose direct audio URLs in search results.
-      const metadata: TrackItem & { url?: string; mime?: string; encoding?: string } = { ...track };
-      delete metadata.url;
-      delete metadata.mime;
-      delete metadata.encoding;
-      tracks.set(track.id, metadata);
+      tracks.set(track.id, recordingMetadata(track));
     }
   }
   return [...tracks.values()].slice(0, 36);

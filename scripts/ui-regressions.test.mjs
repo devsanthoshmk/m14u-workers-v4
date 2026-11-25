@@ -365,6 +365,39 @@ for (const [command, payload, expected] of [
     });
 }
 
+test('Open Audio selection plays first, appends unique recommendations, and ignores a cleared queue', async t => {
+    const { playCatalogSelection } = await server.ssrLoadModule('/src/services/catalogPlayback.ts');
+    useCatalogStore.getState().choose('open-audio');
+    globalThis.resolveTestStream = async () => stream;
+    const seed = { ...tracks[0], id: 'audius:seed' };
+    const related = { ...tracks[1], id: 'audius:related' };
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
+
+    const pending = playCatalogSelection([tracks[2], seed], 1);
+    assert.match(requests[0].url, /\/api\/open-recommendations\?id=audius%3Aseed$/);
+    assert.equal(player().currentSong.id, seed.id);
+    assert.deepEqual(player().queue.map(row => row.song.id), [seed.id]);
+    player().addToQueue(tracks[2]);
+    requests[0].resolve(Response.json([seed, related, related]));
+    await pending;
+    assert.deepEqual(player().queue.map(row => row.song.id), [seed.id, tracks[2].id, related.id]);
+
+    const jamendo = { ...tracks[2], id: 'openverse:f102eb5d-b008-4a74-aa3d-1120fba29d08' };
+    const excluded = { ...tracks[1], id: 'freetouse:excluded' };
+    const fallback = playCatalogSelection([seed, excluded, jamendo, jamendo], 0);
+    requests[1].resolve(Response.json([]));
+    await fallback;
+    assert.deepEqual(player().queue.map(row => row.song.id), [seed.id, jamendo.id]);
+
+    const stale = playCatalogSelection([seed], 0);
+    player().clearQueue();
+    assert.equal(requests[2].signal.aborted, true);
+    requests[2].resolve(Response.json([related]));
+    await stale;
+    assert.deepEqual(player().queue, []);
+});
+
 test('Clear cancels pending stream resolution and permits a fresh selection', async () => {
     let complete;
     globalThis.resolveTestStream = () => new Promise(resolve => { complete = resolve; });
