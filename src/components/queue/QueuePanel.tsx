@@ -10,7 +10,8 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
-import { getThumbnail } from '@/utils/format';
+import { compactTrackArtworkUrls } from '@/utils/trackArtwork';
+import { TrackArtwork } from '@/components/song/TrackArtwork';
 import { X, Trash2, GripVertical, Play, ChevronLeft, ListMusic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -224,7 +225,6 @@ function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: Que
     const index = queue.findIndex(q => q.queueId === item.queueId);
     const s = item.song;
     const title = s.name || s.title || 'Unknown track';
-    const thumbnail = s.img || (s.thumbnails ? getThumbnail(s.thumbnails, 60) : '') || `https://i.ytimg.com/vi/${s.videoId || s.id}/mqdefault.jpg`;
 
     return (
         <div
@@ -235,7 +235,7 @@ function QueueItemRow({ item, isCurrent = false, isPlayed = false }: { item: Que
             )}
         >
             <div className="relative size-9 shrink-0 overflow-hidden rounded-md bg-surface ring-1 ring-white/10 sm:size-10">
-                <img src={thumbnail} alt="" className="size-full object-cover" loading="lazy" />
+                <TrackArtwork seed={s.id || title} sources={compactTrackArtworkUrls(s, 60)} className="size-full object-cover" lazy />
             </div>
             <div className="flex-1 min-w-0">
                 <p className={cn('truncate text-sm font-medium', isCurrent ? 'text-primary' : isPlayed ? 'text-secondary-foreground' : 'text-foreground')} title={title}>

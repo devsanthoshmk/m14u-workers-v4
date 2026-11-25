@@ -1,4 +1,13 @@
 import type { TrackItem } from '@/types/music';
+import { getThumbnail } from './format';
+
+export function compactTrackArtworkUrls(track: TrackItem, size: number): string[] {
+    return [...new Set([
+        track.img,
+        track.thumbnails && getThumbnail(track.thumbnails, size),
+        ...trackArtworkUrls(track),
+    ].filter((url): url is string => !!url))];
+}
 
 export function trackArtworkUrls(track: TrackItem): string[] {
     const thumbnails = [...(track.thumbnails ?? [])].sort((a, b) => b.width - a.width);

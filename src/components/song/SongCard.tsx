@@ -6,14 +6,13 @@
  */
 
 import { usePlayerStore } from '@/stores/playerStore';
-import { getThumbnail } from '@/utils/format';
 import { toTrackItem } from '@/utils/trackMetadata';
 import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
 import type { Song, TrackItem } from '@/types/music';
 import { TrackArtwork } from './TrackArtwork';
-import { trackArtworkUrls } from '@/utils/trackArtwork';
+import { compactTrackArtworkUrls, trackArtworkUrls } from '@/utils/trackArtwork';
 
 interface SongCardProps {
     song: TrackItem | Song;
@@ -27,8 +26,6 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
     const songId = track.id;
     const songTitle = track.name || track.title;
     const songArtist = track.artist?.name || track.author;
-    const songThumbnails = track.thumbnails;
-    const songImg = track.img;
     const songDuration = track.duration;
     
     const currentSong = usePlayerStore(s => s.currentSong);
@@ -46,11 +43,7 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
 
     const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
-    const videoId = track.videoId || songId;
-    const artworkUrls = highQualityArtwork ? trackArtworkUrls(track) : [...new Set([
-        songImg, songThumbnails && getThumbnail(songThumbnails, 300),
-        /^[\w-]{11}$/.test(videoId) && `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-    ].filter((url): url is string => !!url))];
+    const artworkUrls = highQualityArtwork ? trackArtworkUrls(track) : compactTrackArtworkUrls(track, 300);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -77,6 +70,22 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
             {/* Album art container */}
             <div className="relative aspect-square rounded-lg overflow-hidden mb-2.5 bg-surface">
                 <TrackArtwork seed={songId || songTitle} sources={artworkUrls} className="size-full object-cover" lazy />
+
+                {/* License or language badge */}
+                {track.licenseLabel ? (
+                    <span
+                        className="absolute bottom-2 left-2 max-w-[calc(100%-2.5rem)] truncate rounded bg-black/75 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300 backdrop-blur-sm"
+                        title={track.licenseLabel}
+                    >
+                        {track.licenseLabel}
+                    </span>
+                ) : track.language ? (
+                    <span
+                        className="absolute bottom-2 left-2 max-w-[calc(100%-2.5rem)] truncate rounded bg-black/75 px-1.5 py-0.5 text-[9px] font-medium text-white/90 backdrop-blur-sm capitalize"
+                    >
+                        {track.language}
+                    </span>
+                ) : null}
 
                 {/* Duration badge */}
                 {!!songDuration && (

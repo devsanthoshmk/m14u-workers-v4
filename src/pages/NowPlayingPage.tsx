@@ -41,6 +41,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useSleepTimer } from '@/hooks/useSleepTimer';
 import { formatDuration } from '@/utils/format';
 import { trackProviderUrl, trackShareUrl } from '@/utils/trackShare';
+import { trackArtworkUrls } from '@/utils/trackArtwork';
 import { ProgressBar } from '@/components/player/ProgressBar';
 import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -136,23 +137,8 @@ export function NowPlayingPage() {
     const title = currentSong?.name || currentSong?.title || 'Untitled track';
     const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
     const album = currentSong?.album?.name;
-    const thumbnails = [...(currentSong?.thumbnails ?? [])].sort((a, b) => b.width - a.width);
-    const suppliedArt = thumbnails[0]?.url || currentSong?.img;
-    // YouTube Music often supplies square covers with a small CDN size preset.
-    const fullSizeCover = suppliedArt?.replace(
-        /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
-        '$1=w800-h800',
-    );
-    const youtubeArtwork = songId && /^[\w-]{11}$/.test(songId) ? `https://i.ytimg.com/vi/${songId}` : '';
-    const artworkUrls = [...new Set<string>([
-        fullSizeCover !== suppliedArt ? fullSizeCover : '',
-        thumbnails[0]?.width >= 800 ? suppliedArt : '',
-        youtubeArtwork ? `${youtubeArtwork}/maxresdefault.jpg` : '',
-        ...thumbnails.map(thumbnail => thumbnail.url),
-        suppliedArt,
-        youtubeArtwork ? `${youtubeArtwork}/hqdefault.jpg` : '',
-    ].filter((url): url is string => !!url))];
-    const artworkKey = JSON.stringify([songId, artworkUrls]);
+    const artworkUrls = currentSong ? trackArtworkUrls(currentSong) : [];
+    const artworkKey = JSON.stringify([currentSong?.id, artworkUrls]);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
     const art = artworkUrls[artworkIndex];
     const handleArtworkError = () => {

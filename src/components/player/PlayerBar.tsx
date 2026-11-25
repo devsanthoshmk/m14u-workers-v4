@@ -8,7 +8,8 @@ import { TrackArtwork } from '@/components/song/TrackArtwork';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
-import { getThumbnail, formatDuration } from '@/utils/format';
+import { formatDuration } from '@/utils/format';
+import { compactTrackArtworkUrls } from '@/utils/trackArtwork';
 import { PlayerControls } from './PlayerControls';
 import { VolumeControl } from './VolumeControl';
 import { SleepTimerButton } from './SleepTimer';
@@ -61,16 +62,12 @@ export function PlayerBar() {
     if (!currentSong) return null;
 
     // Handle both TrackItem and legacy Song types
-    const songId = currentSong.videoId || currentSong.id;
+    const songId = currentSong.id;
     const songTitle = currentSong.name || currentSong.title;
     const songArtist = currentSong.artist?.name || currentSong.author;
-    const songThumbnails = currentSong.thumbnails;
-    const songImg = currentSong.img;
-
-    const videoId = currentSong.videoId || songId;
-    const artwork = [...new Set([songImg, songThumbnails && getThumbnail(songThumbnails, 120),
-        /^[\w-]{11}$/.test(videoId) && `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`].filter((url): url is string => !!url))];
-    const isFavorite = songId ? usePlayerStore.getState().isFavorite(songId) : false;
+    const artwork = compactTrackArtworkUrls(currentSong, 120);
+    const favoriteId = currentSong.videoId || currentSong.id;
+    const isFavorite = favoriteId ? usePlayerStore.getState().isFavorite(favoriteId) : false;
 
     const displayTime = isSeeking ? seekValue : currentTime;
     const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
