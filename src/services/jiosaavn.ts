@@ -1,6 +1,7 @@
 import { isNative } from '@/lib/utils/platform';
 import type { TrackItem } from '@/types/music';
 import { formatDuration } from '@/utils/format';
+import { normalizeMusicLanguage } from '@/lib/utils/musicLanguage';
 
 const origin = (import.meta.env.VITE_JIOSAAVN_API_URL?.trim() || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
 const songPrefix = 'jiosaavn:';
@@ -43,6 +44,7 @@ export async function searchJioSaavn(query: string, signal: AbortSignal): Promis
         const albumName = text(row(song.album).name);
         const shareUrl = text(song.url);
         return [{ id: `${songPrefix}${id}`, title, author, authorId: '', type: 'song', duration: formatDuration(durationSec),
+            language: normalizeMusicLanguage(song.language) || undefined,
             durationSec, img, album: albumName ? { name: albumName, albumId: '' } : null,
             shareUrl: shareUrl.startsWith('https://') ? shareUrl : undefined }];
     });

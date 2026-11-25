@@ -3,6 +3,8 @@ import type { TrackItem, YTListItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 import { isNative } from '@/lib/utils/platform';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { useListeningPreferences } from '@/stores/listeningPreferences';
+import { rankSongsByLanguage } from '@/lib/utils/musicLanguage';
 import { searchJioSaavn } from '@/services/jiosaavn';
 import { findMoreByArtist, findSaavnAlternatives, findSaavnMatch, findYouTubeSong } from '@/services/saavnDiscovery';
 
@@ -73,6 +75,8 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
   activeSearch?.abort();
   const request = new AbortController();
   activeSearch = request;
+  const { languages, language } = useListeningPreferences.getState();
+  const targetLanguages = languages.length > 0 ? languages : language;
   setState({ isLoading: true, error: null, results: [], discovery: null, query, filter: filter || 'all' });
 
   try {
@@ -80,7 +84,7 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
       const primary = searchJioSaavn(query, request.signal);
       const seed = findYouTubeSong(query, AbortSignal.any([request.signal, AbortSignal.timeout(8000)]))
         .catch(() => undefined);
-      const results = await primary;
+      const results = rankSongsByLanguage(await primary, targetLanguages, query);
       if (request.signal.aborted) return;
       setState({ results, isLoading: false });
       void enrichSaavnSearch(seed, results, request);
@@ -95,7 +99,7 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
           return res.json();
         });
     if (request.signal.aborted) return;
-    const results: SearchState['results'] = Array.isArray(data) ? data : [];
+    const results: SearchState['results'] = Array.isArray(data) ? rankSongsByLanguage(data, targetLanguages, query) : [];
     setState({ results, isLoading: false });
     return results;
   } catch (err) {
@@ -163,4 +167,14 @@ export const useSearchStore = create<SearchState>((set) => ({
 
 useCatalogStore.subscribe((state, previous) => {
   if (state.provider !== previous.provider) useSearchStore.getState().clearSearch();
+});
+
+useListeningPreferences.subscribe((state, previous) => {
+  const curLangs = state.languages.join(',');
+  const prevLangs = previous.languages.join(',');
+  if (curLangs === prevLangs && state.language === previous.language) return;
+  const { query, filter } = useSearchStore.getState();
+  activeSuggestions?.abort();
+  useSearchStore.setState({ suggestions: [] });
+  if (query.trim()) void searchWithResults(query, filter);
 });

@@ -18,6 +18,53 @@ class FakeAudio extends EventTarget {
 globalThis.Audio = FakeAudio;
 globalThis.document = { activeElement: null };
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
+
+test('music language ranking is bounded, stable, and preserves exact and non-song results', async () => {
+    const { rankSongsByLanguage } = await import('../src/lib/utils/musicLanguage.ts');
+    const results = [
+        { title: 'Another track', type: 'song' },
+        { title: 'Exact match', type: 'song', language: 'english' },
+        { title: 'Album', type: 'album', language: 'Tamil' },
+        { title: 'Preferred', type: 'song', language: 'ta-IN' },
+        { title: 'Lower relevance', type: 'song', language: 'Tamil' },
+    ];
+    assert.deepEqual(rankSongsByLanguage(results, 'tamil', 'exact match'), [results[3], results[1], results[2], results[0], results[4]]);
+    assert.equal(rankSongsByLanguage(results, ''), results);
+});
+
+test('multi-language ranking applies equal bounded ranking with no cap and preserves relative order', async () => {
+    const { rankSongsByLanguage, normalizeMusicLanguages } = await import('../src/lib/utils/musicLanguage.ts');
+    assert.deepEqual(normalizeMusicLanguages(['ta-IN', 'Korean', 'ta', 'unknown', 'hi']), ['tamil', 'korean', 'hindi']);
+    assert.deepEqual(normalizeMusicLanguages('tamil, telugu, korean'), ['tamil', 'telugu', 'korean']);
+    assert.deepEqual(normalizeMusicLanguages(''), []);
+
+    const items = [
+        { title: 'Item 0', type: 'song', language: 'french' },
+        { title: 'Exact match', type: 'song', language: 'german' },
+        { title: 'Item 2 (Korean)', type: 'song', language: 'ko' },
+        { title: 'Item 3 (Tamil)', type: 'song', language: 'tamil' },
+        { title: 'Item 4 (Album)', type: 'album', language: 'tamil' },
+        { title: 'Item 5 (Hindi)', type: 'song', language: 'hindi' },
+        { title: 'Item 6 (Telugu)', type: 'song', language: 'telugu' },
+        { title: 'Item 7', type: 'song', language: 'spanish' },
+    ];
+    const ranked = rankSongsByLanguage(items, ['tamil', 'korean'], 'exact match');
+    assert.deepEqual(ranked, [
+        items[2], // Korean boosted to slot 0
+        items[1], // Exact match untouched at index 1
+        items[3], // Tamil boosted to slot 2
+        items[0], // French moved to slot 3
+        items[4], // Album untouched at index 4
+        items[5],
+        items[6],
+        items[7],
+    ]);
+
+    // Bounded ranking with no cap across many languages
+    const rankedMany = rankSongsByLanguage(items, ['french', 'korean', 'tamil', 'hindi', 'telugu', 'spanish'], 'exact match');
+    assert.equal(rankedMany.length, items.length);
+    assert.deepEqual(rankSongsByLanguage(items, []), items);
+});
 const server = await createServer({
     configFile: false,
     define: { 'import.meta.env.VITE_JIOSAAVN_API_URL': JSON.stringify('https://saavn.example.test') },
@@ -37,6 +84,7 @@ const server = await createServer({
 });
 after(() => server.close());
 const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts');
+const { useListeningPreferences } = await server.ssrLoadModule('/src/stores/listeningPreferences.ts');
 const { matchesCatalog, useCatalogStore } = await server.ssrLoadModule('/src/stores/catalogStore.ts');
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
 const { registerConsoleAPI } = await server.ssrLoadModule('/src/lib/testing/console-api.ts');
@@ -80,6 +128,59 @@ const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };
 globalThis.resolveTestStream = async () => stream;
 
+test('changing listening language replaces an in-flight search', async (t) => {
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', (_url, { signal }) => new Promise(resolve => requests.push({ signal, resolve })));
+    const { search, clearSearch } = useSearchStore.getState();
+    const { setLanguage } = useListeningPreferences.getState();
+    t.after(() => { clearSearch(); setLanguage(''); });
+    const previous = search('music');
+    setLanguage('Tamil');
+    assert.equal(requests[0].signal.aborted, true);
+    const tamil = { ...tracks[1], language: 'ta' };
+    requests[1].resolve(Response.json([tracks[0], tamil]));
+    requests[0].resolve(Response.json(tracks));
+    await previous;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(useSearchStore.getState().results, [tamil, tracks[0]]);
+});
+
+test('multi-language preferences manage selection, migration, and search triggering', async (t) => {
+    const { setLanguages, setLanguage } = useListeningPreferences.getState();
+    t.after(() => { setLanguages([]); });
+
+    setLanguages(['Tamil', 'Telugu']);
+    assert.deepEqual(useListeningPreferences.getState().languages, ['tamil', 'telugu']);
+    assert.equal(useListeningPreferences.getState().language, 'tamil');
+
+    setLanguage('Hindi');
+    assert.deepEqual(useListeningPreferences.getState().languages, ['hindi']);
+    assert.equal(useListeningPreferences.getState().language, 'hindi');
+
+    setLanguage('');
+    assert.deepEqual(useListeningPreferences.getState().languages, []);
+    assert.equal(useListeningPreferences.getState().language, '');
+});
+
+test('console API supports musicLanguages multi-select and preserves musicLanguage compatibility', async (t) => {
+    globalThis.window = {};
+    t.after(() => { delete globalThis.window; });
+    registerConsoleAPI();
+    const api = window.m14u;
+    t.after(() => { api.musicLanguages([]); });
+
+    assert.deepEqual(api.musicLanguages(['tamil', 'korean']), ['tamil', 'korean']);
+    assert.deepEqual(api.musicLanguages(), ['tamil', 'korean']);
+    assert.equal(api.musicLanguage(), 'tamil');
+
+    assert.equal(api.musicLanguage('telugu'), 'telugu');
+    assert.deepEqual(api.musicLanguages(), ['telugu']);
+
+    assert.throws(() => api.musicLanguages(['invalid_lang']), /Unknown listening language/);
+    assert.deepEqual(api.musicLanguages([]), []);
+    assert.equal(api.musicLanguage(), '');
+});
+
 test('switching providers cancels the previous search and normalizes JioSaavn results', async (t) => {
     const requests = [];
     t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
@@ -93,11 +194,12 @@ test('switching providers cancels the previous search and normalizes JioSaavn re
     const next = state().search('music');
     assert.equal(requests[1].url, 'https://saavn.example.test/api/search/songs?query=music');
     assert.match(requests[2].url, /catalog=youtube&f=song$/);
-    requests[1].resolve(Response.json({ success: true, data: { results: [{ id: 'track-01', name: 'Song' }] } }));
+    requests[1].resolve(Response.json({ success: true, data: { results: [{ id: 'track-01', name: 'Song', language: 'Tamil' }] } }));
     await next;
     requests[0].resolve(Response.json(tracks));
     await previous;
     assert.deepEqual(state().results.map(track => track.id), ['jiosaavn:track-01']);
+    assert.equal(state().results[0].language, 'tamil');
     choose('open-audio');
     assert.equal(requests[2].signal.aborted, true);
     requests[2].resolve(Response.json([]));

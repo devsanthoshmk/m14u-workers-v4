@@ -10,6 +10,8 @@ import { assert } from './assert';
 import { highlight, highlightButton, clearHighlights } from './highlight';
 import { isNative } from '@/lib/utils/platform';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { useListeningPreferences } from '@/stores/listeningPreferences';
+import { normalizeMusicLanguage } from '@/lib/utils/musicLanguage';
 
 const player = () => usePlayerStore.getState();
 const ui = () => useUIStore.getState();
@@ -81,6 +83,35 @@ const api = {
       if (open) settings.openSettings();
       else settings.closeDialog();
     }, open);
+  },
+  musicLanguage(language?: string) {
+    return act('musicLanguage', () => {
+      const preferences = useListeningPreferences.getState();
+      if (language !== undefined) {
+        const value = normalizeMusicLanguage(language);
+        if (language && !value) throw new Error(`Unknown listening language: ${language}`);
+        preferences.setLanguage(value);
+      }
+      return useListeningPreferences.getState().language;
+    }, language);
+  },
+  musicLanguages(languages?: string[] | string) {
+    return act('musicLanguages', () => {
+      const preferences = useListeningPreferences.getState();
+      if (languages !== undefined) {
+        const list = Array.isArray(languages)
+          ? languages
+          : typeof languages === 'string' && languages.trim()
+          ? languages.split(/[,;\s]+/)
+          : [];
+        for (const item of list) {
+          const norm = normalizeMusicLanguage(item);
+          if (item && !norm) throw new Error(`Unknown listening language: ${item}`);
+        }
+        preferences.setLanguages(list);
+      }
+      return useListeningPreferences.getState().languages;
+    }, languages);
   },
   // --- Navigation ---
   route(path: string) {
@@ -311,7 +342,7 @@ const api = {
   // --- Meta ---
   help() {
     const cmds = [
-      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
+      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
       'play(songOrIndex?)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',

@@ -20,6 +20,7 @@ export interface Album {
 }
 
 export interface Song {
+    language?: string;
     type: 'SONG';
     videoId: string;
     name: string;
@@ -90,6 +91,7 @@ export interface ErrorResponse {
 
 // ytify-style types with backwards compatibility
 export interface TrackItem {
+    language?: string;
     sourceUrl?: string;
     licenseUrl?: string;
     licenseLabel?: string;
