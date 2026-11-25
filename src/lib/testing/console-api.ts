@@ -329,8 +329,33 @@ const api = {
     closeQueue() { return act('panels.closeQueue', () => ui().setQueueOpen(false)); },
     openLyrics() { return act('panels.openLyrics', () => ui().setLyricsOpen(true)); },
     closeLyrics() { return act('panels.closeLyrics', () => ui().setLyricsOpen(false)); },
+    setSidebarWidth(width?: number) {
+      return act('panels.setSidebarWidth', () => {
+        if (width !== undefined) ui().setSidebarWidth(width);
+        return ui().sidebarWidth;
+      }, width);
+    },
+    setRightPanelWidth(width?: number) {
+      return act('panels.setRightPanelWidth', () => {
+        if (width !== undefined) ui().setRightPanelWidth(width);
+        return ui().rightPanelWidth;
+      }, width);
+    },
+    resetWidths() {
+      return act('panels.resetWidths', () => {
+        ui().resetSidebarWidth();
+        ui().resetRightPanelWidth();
+        return { sidebarWidth: ui().sidebarWidth, rightPanelWidth: ui().rightPanelWidth };
+      });
+    },
     state() {
-      return { queue: ui().isQueueOpen, lyrics: ui().isLyricsOpen, sidebar: ui().isSidebarOpen };
+      return {
+        queue: ui().isQueueOpen,
+        lyrics: ui().isLyricsOpen,
+        sidebar: ui().isSidebarOpen,
+        sidebarWidth: ui().sidebarWidth,
+        rightPanelWidth: ui().rightPanelWidth,
+      };
     },
   },
 
@@ -382,7 +407,8 @@ const api = {
       'favorites.shufflePlay()', 'favorites.count()',
       'history()',
       'panels.toggleQueue()', 'panels.toggleLyrics()', 'panels.toggleSidebar()',
-      'panels.openQueue()', 'panels.closeQueue()', 'panels.openLyrics()', 'panels.closeLyrics()', 'panels.state()',
+      'panels.openQueue()', 'panels.closeQueue()', 'panels.openLyrics()', 'panels.closeLyrics()',
+      'panels.setSidebarWidth(w?)', 'panels.setRightPanelWidth(w?)', 'panels.resetWidths()', 'panels.state()',
       'wait.forPlaybackStart()', 'wait.forPlaybackPause()', 'wait.forRoute(path)',
       'wait.forResults()', 'wait.forQueueLength(n)', 'wait.forTime(s)', 'wait.forBuffering()',
       'wait.forSong(title)', 'wait.for(predicate, label)',

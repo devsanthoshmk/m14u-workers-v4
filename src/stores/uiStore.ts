@@ -6,12 +6,31 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { STORAGE_KEYS } from '@/utils/constants';
 
+export const PANEL_WIDTHS = {
+    SIDEBAR_DEFAULT: 220,
+    SIDEBAR_MIN: 180,
+    SIDEBAR_MAX: 360,
+    RIGHT_DEFAULT: 340,
+    RIGHT_MIN: 260,
+    RIGHT_MAX: 540,
+    MAIN_MIN: 320,
+} as const;
+
+export function clampPanelWidth(width: number, min: number, max: number): number {
+    if (!Number.isFinite(width)) return min;
+    return Math.min(max, Math.max(min, Math.round(width)));
+}
+
 interface UIStore {
     // Panel visibility
     isQueueOpen: boolean;
     isLyricsOpen: boolean;
     isSidebarOpen: boolean;
     isSearchFocused: boolean;
+
+    // Desktop panel widths (px)
+    sidebarWidth: number;
+    rightPanelWidth: number;
 
     // Locale
     userLocale: string;
@@ -42,6 +61,10 @@ interface UIStore {
     setRoomPanelOpen: (open: boolean) => void;
     toggleSidebar: () => void;
     setSidebarOpen: (open: boolean) => void;
+    setSidebarWidth: (width: number) => void;
+    setRightPanelWidth: (width: number) => void;
+    resetSidebarWidth: () => void;
+    resetRightPanelWidth: () => void;
     setSearchFocused: (focused: boolean) => void;
     setUserLocale: (locale: string) => void;
     setOnboardingDone: () => void;
@@ -59,6 +82,8 @@ export const useUIStore = create<UIStore>()(
             isLyricsOpen: false,
             isSidebarOpen: true,
             isSearchFocused: false,
+            sidebarWidth: PANEL_WIDTHS.SIDEBAR_DEFAULT,
+            rightPanelWidth: PANEL_WIDTHS.RIGHT_DEFAULT,
             userLocale: '',
             onboardingDone: false,
             recentSearches: [],
@@ -95,6 +120,14 @@ export const useUIStore = create<UIStore>()(
 
             toggleSidebar: () => set(s => ({ isSidebarOpen: !s.isSidebarOpen })),
             setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+            setSidebarWidth: (width) => set({
+                sidebarWidth: clampPanelWidth(width, PANEL_WIDTHS.SIDEBAR_MIN, PANEL_WIDTHS.SIDEBAR_MAX),
+            }),
+            setRightPanelWidth: (width) => set({
+                rightPanelWidth: clampPanelWidth(width, PANEL_WIDTHS.RIGHT_MIN, PANEL_WIDTHS.RIGHT_MAX),
+            }),
+            resetSidebarWidth: () => set({ sidebarWidth: PANEL_WIDTHS.SIDEBAR_DEFAULT }),
+            resetRightPanelWidth: () => set({ rightPanelWidth: PANEL_WIDTHS.RIGHT_DEFAULT }),
 
             setSearchFocused: (focused) => set({ isSearchFocused: focused }),
 
@@ -121,6 +154,8 @@ export const useUIStore = create<UIStore>()(
                 userLocale: state.userLocale,
                 onboardingDone: state.onboardingDone,
                 recentSearches: state.recentSearches,
+                sidebarWidth: state.sidebarWidth,
+                rightPanelWidth: state.rightPanelWidth,
             }),
         }
     )

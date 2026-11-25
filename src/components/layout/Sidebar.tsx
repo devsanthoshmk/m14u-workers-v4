@@ -1,7 +1,7 @@
 /**
  * Sidebar — Desktop left navigation.
  * Reference-matched: clean navigation with icon + label, no distracting footer.
- * Width: 220px fixed. Navigation items follow F-pattern reading.
+ * Resizable width controlled by AppShell. Navigation items follow F-pattern reading.
  */
 
 import { NavLink } from 'react-router-dom';
@@ -19,7 +19,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
     return (
-        <aside className="flex flex-col h-full w-[220px] bg-[hsl(240_6%_6%)] border-r border-white/[0.06]">
+        <aside className="flex flex-col h-full w-full min-w-0 overflow-hidden bg-[hsl(240_6%_6%)] border-r border-white/[0.06]">
             {/* ─── Logo ─── */}
             <div className="flex items-center gap-2.5 px-5 h-16 flex-shrink-0">
                 <BrandLogo className="size-8" />
@@ -45,7 +45,7 @@ export function Sidebar() {
                         }
                     >
                         <Icon className="h-[18px] w-[18px] flex-shrink-0" />
-                        {label}
+                        <span className="truncate">{label}</span>
                     </NavLink>
                 ))}
             </nav>
@@ -57,7 +57,7 @@ export function Sidebar() {
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium text-muted-foreground hover:bg-white/[0.04] hover:text-foreground transition-colors"
                 >
                     <Settings className="size-[18px] shrink-0" />
-                    Settings
+                    <span className="truncate">Settings</span>
                 </button>
             </div>
 

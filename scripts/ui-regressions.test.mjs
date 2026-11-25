@@ -494,3 +494,32 @@ test('catalog settings modal can be opened and closed', () => {
     useCatalogStore.getState().closeDialog();
     assert.equal(useCatalogStore.getState().dialog, null);
 });
+
+test('panel widths clamp to bounds and reset via store and console API', async (t) => {
+    const { useUIStore, PANEL_WIDTHS } = await server.ssrLoadModule('/src/stores/uiStore.ts');
+    globalThis.window = {};
+    t.after(() => { delete globalThis.window; });
+    registerConsoleAPI();
+    const api = window.m14u;
+
+    assert.equal(api.panels.setSidebarWidth(100), PANEL_WIDTHS.SIDEBAR_MIN);
+    assert.equal(api.panels.setSidebarWidth(999), PANEL_WIDTHS.SIDEBAR_MAX);
+    assert.equal(api.panels.setSidebarWidth(260), 260);
+
+    assert.equal(api.panels.setRightPanelWidth(100), PANEL_WIDTHS.RIGHT_MIN);
+    assert.equal(api.panels.setRightPanelWidth(999), PANEL_WIDTHS.RIGHT_MAX);
+    assert.equal(api.panels.setRightPanelWidth(420), 420);
+
+    assert.deepEqual(api.panels.state(), {
+        queue: useUIStore.getState().isQueueOpen,
+        lyrics: useUIStore.getState().isLyricsOpen,
+        sidebar: useUIStore.getState().isSidebarOpen,
+        sidebarWidth: 260,
+        rightPanelWidth: 420,
+    });
+
+    assert.deepEqual(api.panels.resetWidths(), {
+        sidebarWidth: PANEL_WIDTHS.SIDEBAR_DEFAULT,
+        rightPanelWidth: PANEL_WIDTHS.RIGHT_DEFAULT,
+    });
+});
