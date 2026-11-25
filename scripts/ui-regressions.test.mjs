@@ -185,11 +185,6 @@ test('console API supports musicLanguages multi-select and preserves musicLangua
     assert.equal(api.globalTopFilter('all'), '');
     assert.equal(api.globalTopFilter(), '');
     assert.throws(() => api.globalTopFilter('invalid_lang'), /Unknown listening language/);
-    assert.equal(api.globalTopFilter('tamil'), 'tamil');
-    assert.equal(api.globalTopFilter(), 'tamil');
-    assert.equal(api.globalTopFilter('all'), '');
-    assert.equal(api.globalTopFilter(), '');
-    assert.throws(() => api.globalTopFilter('invalid_lang'), /Unknown listening language/);
 });
 
 test('switching providers cancels the previous search and normalizes JioSaavn results', async (t) => {
