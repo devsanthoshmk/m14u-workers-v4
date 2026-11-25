@@ -22,6 +22,7 @@ import { trackDurationSeconds } from '@/utils/trackMetadata';
 interface LyricsPanelProps {
     embedded?: boolean;
     onClose?: () => void;
+    onUnavailable?: () => void;
 }
 
 export function LyricsPanel(props: LyricsPanelProps) {
@@ -43,7 +44,7 @@ interface TrackLyricsProps extends LyricsPanelProps {
     duration?: number;
 }
 
-function TrackLyrics({ embedded = false, onClose, title, artist, album, duration }: TrackLyricsProps) {
+function TrackLyrics({ embedded = false, onClose, onUnavailable, title, artist, album, duration }: TrackLyricsProps) {
     const currentTime = usePlayerStore(s => s.currentTime);
     const seek = usePlayerStore(s => s.seek);
     const setLyricsOpen = useUIStore(s => s.setLyricsOpen);
@@ -51,6 +52,13 @@ function TrackLyrics({ embedded = false, onClose, title, artist, album, duration
     const [lyrics, setLyrics] = useState<LyricsData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [lyricsError, setLyricsError] = useState<string | null>(null);
+    const hasSyncedLyrics = Boolean(lyrics?.synced?.length);
+    const hasPlainLyrics = Boolean(lyrics?.unsynced?.trim());
+    const noLyrics = lyrics !== null && !lyrics.instrumental && !hasSyncedLyrics && !hasPlainLyrics;
+
+    useEffect(() => {
+        if (!isLoading && noLyrics) onUnavailable?.();
+    }, [isLoading, noLyrics, onUnavailable]);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const activeLineRef = useRef<HTMLButtonElement>(null);
@@ -195,13 +203,13 @@ function TrackLyrics({ embedded = false, onClose, title, artist, album, duration
                             </div>
                         )}
 
-                        {!lyrics.instrumental && !lyrics.synced && lyrics.unsynced && (
+                        {!lyrics.instrumental && !hasSyncedLyrics && hasPlainLyrics && (
                             <div className="py-10 whitespace-pre-wrap text-base sm:text-lg leading-relaxed text-foreground/90 font-medium px-3">
                                 {lyrics.unsynced}
                             </div>
                         )}
 
-                        {!lyrics.instrumental && !lyrics.synced && !lyrics.unsynced && (
+                        {noLyrics && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-12">
                                 <MicOff className="h-8 w-8 text-muted-foreground" />
                                 <p className="text-sm text-muted-foreground">No lyrics available for this song</p>

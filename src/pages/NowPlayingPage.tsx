@@ -23,8 +23,6 @@ import {
     Volume1,
     Volume2,
     VolumeX,
-    Maximize2,
-    Minimize2,
     Share2,
     Info,
     Check,
@@ -49,6 +47,7 @@ import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
 import { PlaybackError } from '@/components/player/PlaybackError';
 import { QueuePanel } from '@/components/queue/QueuePanel';
 import * as Slider from '@radix-ui/react-slider';
+import * as Dialog from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
 import type { TrackItem } from '@/types/music';
 
@@ -82,28 +81,41 @@ export function NowPlayingPage() {
     const [showVolumeSheet, setShowVolumeSheet] = useState(false);
     const [showSleepTimerSheet, setShowSleepTimerSheet] = useState(false);
     const [showSongMenuSheet, setShowSongMenuSheet] = useState(false);
-    const [showInfoModal, setShowInfoModal] = useState(false);
+    const [showTrackInfo, setShowTrackInfo] = useState(false);
+    const [showMobileUpNext, setShowMobileUpNext] = useState(false);
     const [copied, setCopied] = useState(false);
     const [shareMessage, setShareMessage] = useState('');
-    const [isFullscreen, setIsFullscreen] = useState(false);
     const [artworkFallback, setArtworkFallback] = useState({ key: '', index: 0 });
 
-    const modalRef = useRef<HTMLDivElement>(null);
+    const lyricsFallbacks = useRef(new Set<string>());
 
     // The global lyrics shortcut and the mobile stage share one toggle.
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
     const setLyricsOpen = useUIStore(s => s.setLyricsOpen);
-    const activeStage = isLyricsOpen ? 'lyrics' : 'cover';
+    const activeStage = isLyricsOpen ? 'lyrics' : showMobileUpNext ? 'queue' : 'cover';
 
     const handleSwitchStage = (stage: 'cover' | 'lyrics') => {
+        setShowMobileUpNext(false);
         setLyricsOpen(stage === 'lyrics');
+    };
+
+    const handleLyricsUnavailable = (layout: 'mobile' | 'desktop') => {
+        const isDesktop = window.matchMedia('(min-width: 64rem)').matches;
+        if ((layout === 'desktop') !== isDesktop) return;
+        const key = JSON.stringify([layout, currentSong?.id, currentSong?.videoId, currentSong?.name || currentSong?.title]);
+        if (lyricsFallbacks.current.has(key)) return;
+        lyricsFallbacks.current.add(key);
+        if (layout === 'desktop') setDesktopTab('queue');
+        else {
+            setLyricsOpen(false);
+            setShowMobileUpNext(true);
+        }
     };
 
     // Close modals and sheets on Escape
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                setShowInfoModal(false);
                 setShowVolumeSheet(false);
                 setShowSleepTimerSheet(false);
                 setShowSongMenuSheet(false);
@@ -118,15 +130,6 @@ export function NowPlayingPage() {
         else navigate('/', { replace: true });
     }
 
-    const toggleFullscreen = () => {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
-            setIsFullscreen(true);
-        } else {
-            document.exitFullscreen().catch(() => {});
-            setIsFullscreen(false);
-        }
-    };
 
     const songId = currentSong?.videoId || currentSong?.id;
     const providerUrl = currentSong && trackProviderUrl(currentSong);
@@ -197,6 +200,7 @@ export function NowPlayingPage() {
     }, [currentSong]);
 
     return (
+        <Dialog.Root modal={false} open={showTrackInfo} onOpenChange={setShowTrackInfo}>
         <section
             aria-label="Now playing"
             className="relative flex h-full flex-col isolate overflow-hidden bg-[#090a0f] text-foreground select-none"
@@ -244,27 +248,14 @@ export function NowPlayingPage() {
                     )}
                 </div>
 
-                <div className="flex items-center gap-1">
-                    <button
+                    <Dialog.Trigger
                         type="button"
-                        onClick={() => setShowInfoModal(true)}
                         className="inline-flex size-10 items-center justify-center rounded-full text-foreground/80 hover:text-foreground hover:bg-white/[0.08] transition-all active:scale-95"
                         title="Track info & stream specs"
                         aria-label="Track info"
                     >
                         <Info className="size-5" />
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={toggleFullscreen}
-                        className="hidden sm:inline-flex size-10 items-center justify-center rounded-full text-foreground/80 hover:text-foreground hover:bg-white/[0.08] transition-all active:scale-95"
-                        title={isFullscreen ? 'Exit full screen' : 'Full screen'}
-                        aria-label="Toggle full screen"
-                    >
-                        {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-                    </button>
-                </div>
+                    </Dialog.Trigger>
             </header>
 
             <PlaybackError />
@@ -313,8 +304,17 @@ export function NowPlayingPage() {
                                     </div>
 
                                     <div className="flex-1 min-h-0 overflow-hidden">
-                                        <LyricsPanel embedded onClose={() => handleSwitchStage('cover')} />
+                                        <LyricsPanel embedded onClose={() => handleSwitchStage('cover')} onUnavailable={() => handleLyricsUnavailable('mobile')} />
                                     </div>
+                                </div>
+                            )}
+                            {activeStage === 'queue' && (
+                                <div className="flex h-full w-full min-h-0 flex-col overflow-hidden rounded-2xl bg-card/60">
+                                    <div className="flex shrink-0 items-center justify-between px-4 py-2">
+                                        <h2 className="text-sm font-semibold">Up Next</h2>
+                                        <button type="button" onClick={() => handleSwitchStage('cover')} className="rounded-lg px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-white/[0.08]">Show Cover</button>
+                                    </div>
+                                    <div className="min-h-0 flex-1"><QueuePanel embedded /></div>
                                 </div>
                             )}
                         </div>
@@ -650,7 +650,7 @@ export function NowPlayingPage() {
 
                                 <button
                                     type="button"
-                                    onClick={() => setShowInfoModal(true)}
+                                    onClick={() => setShowTrackInfo(true)}
                                     className="text-xs font-mono text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-white/[0.06]"
                                 >
                                     <Info className="size-3.5" /> Track Details
@@ -662,7 +662,7 @@ export function NowPlayingPage() {
                                 {desktopTab === 'queue' ? (
                                     <QueuePanel embedded />
                                 ) : desktopTab === 'lyrics' ? (
-                                    <LyricsPanel embedded onClose={() => setDesktopTab('player')} />
+                                    <LyricsPanel embedded onClose={() => setDesktopTab('player')} onUnavailable={() => handleLyricsUnavailable('desktop')} />
                                 ) : null}
                             </div>
                         </div>
@@ -790,7 +790,7 @@ export function NowPlayingPage() {
                                 type="button"
                                 onClick={() => {
                                     setShowVolumeSheet(false);
-                                    setShowInfoModal(true);
+                                    setShowTrackInfo(true);
                                 }}
                                 className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
                             >
@@ -992,7 +992,7 @@ export function NowPlayingPage() {
                                 type="button"
                                 onClick={() => {
                                     setShowSongMenuSheet(false);
-                                    setShowInfoModal(true);
+                                    setShowTrackInfo(true);
                                 }}
                                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-sm text-foreground transition-colors"
                             >
@@ -1028,31 +1028,21 @@ export function NowPlayingPage() {
                 </div>
             )}
 
-            {/* Accessible Technical Track Inspector Modal */}
-            {showInfoModal && currentSong && (
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="track-info-title"
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in"
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) setShowInfoModal(false);
-                    }}
-                >
-                    <div ref={modalRef} className="w-full max-w-sm rounded-3xl bg-neutral-900 border border-white/10 p-6 shadow-2xl space-y-4">
+            {currentSong && (
+                <Dialog.Portal>
+                    <Dialog.Content aria-describedby={undefined} className="fixed top-[calc(env(safe-area-inset-top)+3.5rem)] right-4 z-50 w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl bg-popover border border-border p-4 shadow-2xl space-y-4 sm:top-[calc(env(safe-area-inset-top)+4rem)] sm:right-[max(2rem,calc((100%-80rem)/2+2rem))]">
                         <div className="flex items-center justify-between border-b border-white/10 pb-3">
                             <div className="flex items-center gap-2">
                                 <Radio className="size-4 text-amber-400" />
-                                <h3 id="track-info-title" className="font-heading text-base font-bold text-foreground">Track & Stream Info</h3>
+                                <Dialog.Title className="font-heading text-base font-bold text-foreground">Track & Stream Info</Dialog.Title>
                             </div>
-                            <button
+                            <Dialog.Close
                                 type="button"
-                                onClick={() => setShowInfoModal(false)}
                                 className="size-8 grid place-items-center rounded-full hover:bg-white/10 text-muted-foreground hover:text-foreground"
                                 aria-label="Close track info"
                             >
                                 <X className="size-4" />
-                            </button>
+                            </Dialog.Close>
                         </div>
 
                         <div className="space-y-2.5 text-xs">
@@ -1106,9 +1096,10 @@ export function NowPlayingPage() {
                                 </a>
                             )}
                         </div>
-                    </div>
-                </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
             )}
         </section>
+        </Dialog.Root>
     );
 }
