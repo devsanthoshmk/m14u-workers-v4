@@ -17,7 +17,6 @@ import { useUIStore } from '@/stores/uiStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { usePlayerStore } from '@/stores/playerStore';
-import { checkWebProviders } from '@/lib/modules/getStreamData';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { routerRef } from '@/lib/testing/router-ref';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -47,7 +46,6 @@ function KeepAliveRoute({ path, children }: { path: string; children: React.Reac
 export function AppShell() {
     useKeyboardShortcuts();
     useMediaSession();
-    useEffect(() => { checkWebProviders(); }, []);
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -60,7 +58,6 @@ export function AppShell() {
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
     const onboardingDone = useUIStore(s => s.onboardingDone);
     const currentSong = usePlayerStore(s => s.currentSong);
-    const fallbackNotice = usePlayerStore(s => s.fallbackNotice);
 
     const isNowPlaying = location.pathname === '/now-playing';
     const showRightPanel = !isNowPlaying && (isQueueOpen || isLyricsOpen) && !!currentSong;
@@ -70,7 +67,6 @@ export function AppShell() {
 
     return (
         <>
-            {fallbackNotice && <div role="status" className="fixed inset-x-4 top-4 z-50 mx-auto max-w-sm rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-lg">{fallbackNotice}</div>}
             {!onboardingDone && <OnboardingModal />}
 
             <div className="flex h-dvh w-full flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">

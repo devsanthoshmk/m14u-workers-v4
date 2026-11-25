@@ -39,37 +39,7 @@ const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
 const { registerConsoleAPI } = await server.ssrLoadModule('/src/lib/testing/console-api.ts');
 const { trackArtworkUrls } = await server.ssrLoadModule('/src/utils/trackArtwork.ts');
-const { resolveWebFallback } = await server.ssrLoadModule('/src/lib/modules/webPlaybackFallback.ts');
 const { toTrackItem, trackDurationSeconds } = await server.ssrLoadModule('/src/utils/trackMetadata.ts');
-
-test('Render fallback tries the same recording before Worker recommendations', async t => {
-    const song = { id: 'original', title: 'BIBA (feat. Shirley Setia)', author: 'Marshmello - Topic', type: 'song' };
-    const alternative = { id: 'other', title: 'Another Song', author: 'Marshmello', type: 'song' };
-    const saavn = (name, artist) => ({ data: { results: [{ id: 'track123', name, artists: { primary: [{ name: artist }] } }] } });
-    const responses = [saavn('BIBA', 'Marshmello'), saavn('BIBA', 'Wrong artist'), saavn('BIBA', 'Wrong artist'), [alternative], saavn(alternative.title, alternative.author)];
-    const spy = t.mock.method(globalThis, 'fetch', async () => Response.json(responses.shift()));
-    const signal = new AbortController().signal;
-    assert.equal((await resolveWebFallback(song, signal)).same, true);
-    assert.equal(spy.mock.callCount(), 1);
-    const replacement = await resolveWebFallback(song, signal);
-    assert.equal(replacement.same, false);
-    assert.equal(replacement.song.id, 'other');
-    assert.match(replacement.url, /\/api\/audio\/track123$/);
-    assert.match(spy.mock.calls[3].arguments[0], /\/api\/similar\?/);
-});
-
-test('JioSaavn retries the unmodified title and accepts a composer in full credits', async t => {
-    const song = { id: 'original', title: 'Munbe Vaa (From "Sillunu Oru Kaadhal")', author: 'AR Rahman', type: 'song' };
-    const queries = [];
-    t.mock.method(globalThis, 'fetch', async url => {
-        queries.push(new URL(url).searchParams.get('query'));
-        return Response.json({ data: { results: queries.length === 1 ? [] : [
-            { id: 'track123', name: 'Munbe Vaa', artists: { primary: [{ name: 'Shreya Ghoshal' }], all: [{ name: 'A.R. Rahman' }] } },
-        ] } });
-    });
-    assert.match((await resolveWebFallback(song, new AbortController().signal)).url, /track123$/);
-    assert.deepEqual(queries, ['Munbe Vaa AR Rahman', 'Munbe Vaa']);
-});
 
 test('track metadata normalizes legacy IDs and preserves catalog duration labels', () => {
     const legacy = { type: 'SONG', videoId: 'legacy', name: 'Track', artist: { name: 'Artist', artistId: 'artist' }, duration: 63 };
@@ -100,25 +70,6 @@ test('media artwork prefers a full-size cover and keeps fallbacks', () => {
 const player = usePlayerStore.getState;
 const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };
-
-test('web playback switches to Render only after a mid-track error', async t => {
-    const request = t.mock.method(globalThis, 'fetch', async () => Response.json({ data: { results: [
-        { id: 'test1234', name: 'BIBA', artists: { primary: [{ name: 'Marshmello' }] } },
-    ] } }));
-    const { audio } = player();
-    globalThis.resolveTestStream = async () => stream;
-    await player().playSong({ id: 'original', title: 'BIBA', author: 'Marshmello', type: 'song' });
-    assert.equal(request.mock.callCount(), 0);
-    audio.currentTime = 37;
-    audio.error = { code: 2 };
-    audio.dispatchEvent(new Event('error'));
-    await new Promise(resolve => setImmediate(resolve));
-    assert.match(audio.src, /\/api\/audio\/test1234$/);
-    assert.equal(audio.currentTime, 37);
-    assert.equal(player().currentSong.id, 'original');
-    delete audio.error;
-    player().clearQueue();
-});
 globalThis.resolveTestStream = async () => stream;
 
 test('search ignores late success and failure, including after Clear', async (t) => {

@@ -15,8 +15,7 @@ import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
-import { resolveWebFallback } from '@/lib/modules/webPlaybackFallback';
-import { isAndroid, isNative } from '@/lib/utils/platform';
+import { isAndroid } from '@/lib/utils/platform';
 import NativePlayback, { type NativePlaybackState } from '@/plugins/NativePlayback';
 import { trackArtworkUrls } from '@/utils/trackArtwork';
 
@@ -63,7 +62,6 @@ interface PlayerStore {
     volume: number;
     isMuted: boolean;
     error: string | null;
-    fallbackNotice: string | null;
     status: string;
 
     // Stream data
@@ -194,61 +192,6 @@ export const usePlayerStore = create<PlayerStore>()(
             let recorded = false;
             let wantsPlayback = false;
             let fade = 1;
-            let fallbackAttempt: AbortController | undefined;
-            let noticeTimer: ReturnType<typeof setTimeout> | undefined;
-            let stallTimer: ReturnType<typeof setTimeout> | undefined;
-            const recover = async (song: TrackItem, attempt: AbortController, position: number) => {
-                if (isNative() || attempt.signal.aborted || !wantsPlayback) return false;
-                if (fallbackAttempt === attempt) return true;
-                fallbackAttempt = attempt;
-                clearTimeout(stallTimer);
-                set({ isPlaying: false, isBuffering: true, status: 'Checking JioSaavn…', error: null });
-                try {
-                    const result = await resolveWebFallback(song, attempt.signal);
-                    if (attempt.signal.aborted) return true;
-                    if (!wantsPlayback) {
-                        set({ isBuffering: false, status: '', error: 'Playback paused during recovery. Resume to retry.' });
-                        return true;
-                    }
-                    // Keep the shared media element attached for cross-origin playback.
-                    if (typeof HTMLAudioElement !== 'undefined' && audio instanceof HTMLAudioElement && !audio.isConnected) {
-                        audio.hidden = true;
-                        document.body.append(audio);
-                    }
-                    audio.src = result.url;
-                    updateVolume();
-                    audio.muted = get().isMuted;
-                    if (result.same && position > 0) audio.currentTime = position;
-                    const deadline = AbortSignal.any([attempt.signal, AbortSignal.timeout(12000)]);
-                    const play = audio.play();
-                    await new Promise<void>((resolve, reject) => {
-                        const abort = () => reject(deadline.reason);
-                        deadline.addEventListener('abort', abort, { once: true });
-                        void play.then(resolve, reject).finally(() => deadline.removeEventListener('abort', abort));
-                    });
-                    if (attempt.signal.aborted) return true;
-                    if (!result.same) {
-                        const row = get().queue[get().queueIndex];
-                        const replace = (queue: QueueItem[]) => queue.map(item => item.queueId === row?.queueId ? { ...item, song: result.song } : item);
-                        set(state => ({ currentSong: result.song, queue: replace(state.queue), originalQueue: replace(state.originalQueue) }));
-                        recorded = false;
-                    }
-                    const notice = result.same ? 'Playback switched to JioSaavn.' : `Playing a similar track on JioSaavn: ${result.song.title}`;
-                    set({ isBuffering: false, status: '', error: null, streamData: null,
-                        fallbackNotice: document.visibilityState === 'visible' ? notice : null });
-                    clearTimeout(noticeTimer);
-                    noticeTimer = setTimeout(() => set({ fallbackNotice: null }), 6500);
-                } catch (error) {
-                    if (attempt.signal.aborted) return true;
-                    wantsPlayback = false;
-                    audio.pause();
-                    audio.removeAttribute('src');
-                    audio.load();
-                    set({ isBuffering: false, isPlaying: false, status: '',
-                        error: error instanceof Error ? error.message : 'Fallback playback unavailable' });
-                }
-                return true;
-            };
             const updateVolume = () => {
                 const { volume, isMuted } = get();
                 if (androidPlayback) {
@@ -291,7 +234,6 @@ export const usePlayerStore = create<PlayerStore>()(
 
             audio.addEventListener('pause', () => {
                 if (audio.paused) {
-                    clearTimeout(stallTimer);
                     recordListening();
                     set({ isPlaying: false });
                 }
@@ -304,16 +246,9 @@ export const usePlayerStore = create<PlayerStore>()(
             audio.addEventListener('waiting', () => {
                 if (!audio.getAttribute('src') || !wantsPlayback) return;
                 set({ isBuffering: true, status: 'Buffering...' });
-                const attempt = playbackAttempt;
-                const song = get().currentSong;
-                if (!isNative() && attempt && song && get().streamData && fallbackAttempt !== attempt) {
-                    clearTimeout(stallTimer);
-                    stallTimer = setTimeout(() => void recover(song, attempt, audio.currentTime), 12000);
-                }
             });
 
             audio.addEventListener('canplay', () => {
-                clearTimeout(stallTimer);
                 if (!audio.getAttribute('src')) return;
                 set({ isBuffering: false, status: '' });
             });
@@ -321,11 +256,6 @@ export const usePlayerStore = create<PlayerStore>()(
             audio.addEventListener('error', () => {
                 const mediaError = audio.error;
                 if (!mediaError || !audio.getAttribute('src')) return;
-                const song = get().currentSong;
-                if (!isNative() && song && playbackAttempt && wantsPlayback && fallbackAttempt !== playbackAttempt && get().streamData) {
-                    void recover(song, playbackAttempt, audio.currentTime);
-                    return;
-                }
                 const errorCode = mediaError?.code;
                 const errorMsg = mediaError?.message;
                 
@@ -349,7 +279,6 @@ export const usePlayerStore = create<PlayerStore>()(
                 volume: 0.7,
                 isMuted: false,
                 error: null,
-                fallbackNotice: null,
                 status: '',
                 sleepTimer: idleTimer,
                 cancelSleepTimer: () => {
@@ -397,8 +326,6 @@ export const usePlayerStore = create<PlayerStore>()(
                 // === Playback Actions ===
 
                 playSong: async (song: TrackItem) => {
-                    clearTimeout(stallTimer);
-                    clearTimeout(noticeTimer);
                     const state = get();
                     recordListening();
                     recorded = false;
@@ -422,7 +349,6 @@ export const usePlayerStore = create<PlayerStore>()(
                     set({
                         ...(standalone ? { queue, originalQueue: queue, queueIndex: 0, isShuffled: false } : {}),
                         currentSong: song,
-                        fallbackNotice: null,
                         isBuffering: true,
                         isPlaying: false,
                         error: null,
@@ -517,8 +443,6 @@ export const usePlayerStore = create<PlayerStore>()(
                         if (attempt.signal.aborted) return;
                         if (androidPlayback) nativeLoading = false;
                         if (!wantsPlayback && !audio.error && audio.getAttribute('src')) return;
-                        if (!(err instanceof DOMException && err.name === 'NotAllowedError') && await recover(song, attempt, 0)) return;
-                        if (attempt.signal.aborted) return;
                         wantsPlayback = false;
                         audio.pause();
                         audio.removeAttribute('src');
@@ -769,8 +693,6 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 clearQueue: () => {
-                    clearTimeout(stallTimer);
-                    clearTimeout(noticeTimer);
                     recordListening();
                     playbackAttempt?.abort();
                     playbackAttempt = undefined;
@@ -788,7 +710,6 @@ export const usePlayerStore = create<PlayerStore>()(
                         queue: [],
                         queueIndex: -1,
                         originalQueue: [],
-                        fallbackNotice: null,
                         currentSong: null,
                         isPlaying: false,
                         isBuffering: false,
