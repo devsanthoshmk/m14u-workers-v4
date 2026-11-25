@@ -1,6 +1,6 @@
 import type { TrackItem } from '@/types/music';
 
-export function saavnTrackUrl(track: TrackItem): string | undefined {
+export function trackProviderUrl(track: TrackItem): string | undefined {
     if (!track.shareUrl) return;
     try {
         const url = new URL(track.shareUrl);
@@ -13,7 +13,7 @@ export function saavnTrackUrl(track: TrackItem): string | undefined {
 }
 
 export function trackShareUrl(track: TrackItem, origin: string): string {
-    return saavnTrackUrl(track) ?? new URL(`/search?${new URLSearchParams({
+    return trackProviderUrl(track) ?? new URL(`/search?${new URLSearchParams({
         q: [track.name || track.title, track.artist?.name || track.author].filter(Boolean).join(' '),
     })}`, origin).href;
 }

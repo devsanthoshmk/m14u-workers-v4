@@ -42,7 +42,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useSleepTimer } from '@/hooks/useSleepTimer';
 import { formatDuration } from '@/utils/format';
 import { trackArtworkUrls } from '@/utils/trackArtwork';
-import { saavnTrackUrl, trackShareUrl } from '@/utils/trackShare';
+import { trackProviderUrl, trackShareUrl } from '@/utils/trackShare';
 import { ProgressBar } from '@/components/player/ProgressBar';
 import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -133,7 +133,7 @@ export function NowPlayingPage() {
     const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
     const album = currentSong?.album?.name;
     const artworkUrls = currentSong ? trackArtworkUrls(currentSong) : [];
-    const saavnUrl = currentSong && saavnTrackUrl(currentSong);
+    const providerUrl = currentSong && trackProviderUrl(currentSong);
     const artworkKey = JSON.stringify([songId, artworkUrls]);
     const artworkIndex = artworkFallback.key === artworkKey ? artworkFallback.index : 0;
     const art = artworkUrls[artworkIndex];
@@ -1002,15 +1002,15 @@ export function NowPlayingPage() {
                                 <span>{copied ? 'Link Copied!' : 'Share Track'}</span>
                             </button>
 
-                            {saavnUrl && (
+                            {providerUrl && (
                                 <a
-                                    href={saavnUrl}
+                                    href={providerUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-sm text-foreground transition-colors"
                                 >
                                     <ExternalLink className="size-4 text-muted-foreground" />
-                                    <span>Open on JioSaavn</span>
+                                    <span>Open source</span>
                                 </a>
                             )}
                         </div>
@@ -1085,14 +1085,14 @@ export function NowPlayingPage() {
                                 {copied ? <Check className="size-3.5 text-emerald-400" /> : <Share2 className="size-3.5" />}
                                 {copied ? 'Copied Link' : 'Copy Link'}
                             </button>
-                            {saavnUrl && (
+                            {providerUrl && (
                                 <a
-                                    href={saavnUrl}
+                                    href={providerUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="flex-1 py-2.5 rounded-xl bg-amber-400 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all"
                                 >
-                                    <ExternalLink className="size-3.5" /> Open on JioSaavn
+                                    <ExternalLink className="size-3.5" /> Open source
                                 </a>
                             )}
                         </div>
