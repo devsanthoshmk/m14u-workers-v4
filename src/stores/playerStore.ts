@@ -111,6 +111,7 @@ interface PlayerStore {
 
     // History
     addToHistory: (song: TrackItem, listenedDuration: number) => void;
+    removeFromHistory: (songId: string) => void;
 
     // Internal state setters
     _setIsPlaying: (playing: boolean) => void;
@@ -777,6 +778,14 @@ export const usePlayerStore = create<PlayerStore>()(
                             ].slice(0, LIMITS.LISTENING_HISTORY),
                         };
                     });
+                },
+
+                removeFromHistory: (songId: string) => {
+                    set(state => ({
+                        listeningHistory: state.listeningHistory.filter(
+                            h => h.song.id !== songId
+                        ),
+                    }));
                 },
 
                 // === Internal State Setters ===

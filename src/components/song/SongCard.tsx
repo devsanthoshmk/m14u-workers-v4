@@ -7,9 +7,10 @@
 
 import { usePlayerStore } from '@/stores/playerStore';
 import { toTrackItem } from '@/utils/trackMetadata';
-import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart } from 'lucide-react';
+import { Play, Pause, MoreHorizontal, ListPlus, ListEnd, Heart, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Song, TrackItem } from '@/types/music';
 import { TrackArtwork } from './TrackArtwork';
 import { compactTrackArtworkUrls, trackArtworkUrls } from '@/utils/trackArtwork';
@@ -19,9 +20,10 @@ interface SongCardProps {
     index: number;
     highQualityArtwork?: boolean;
     onPlay?: () => void;
+    onRemoveFromHistory?: () => void;
 }
 
-export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
+export function SongCard({ song, onPlay, highQualityArtwork, onRemoveFromHistory }: SongCardProps) {
     const track = toTrackItem(song);
     const songId = track.id;
     const songTitle = track.name || track.title;
@@ -39,21 +41,76 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
     const isFavorite = usePlayerStore(s => songId ? s.isFavorite(songId) : false);
 
     const [showMenu, setShowMenu] = useState(false);
+    const [menuPos, setMenuPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
 
     const currentSongId = currentSong?.id;
     const isCurrentSong = currentSongId === songId;
     const artworkUrls = highQualityArtwork ? trackArtworkUrls(track) : compactTrackArtworkUrls(track, 300);
 
     useEffect(() => {
+        if (!showMenu) return;
+
         const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            if (
+                menuRef.current &&
+                !menuRef.current.contains(target) &&
+                buttonRef.current &&
+                !buttonRef.current.contains(target)
+            ) {
                 setShowMenu(false);
             }
         };
-        if (showMenu) document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowMenu(false);
+        };
+
+        const handleScrollOrResize = (e: Event) => {
+            if (e.type === 'scroll' && e.target instanceof Node && menuRef.current?.contains(e.target)) {
+                return;
+            }
+            setShowMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
     }, [showMenu]);
+
+    const toggleMenu = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (showMenu) {
+            setShowMenu(false);
+            return;
+        }
+        const rect = buttonRef.current?.getBoundingClientRect();
+        if (rect) {
+            const menuWidth = onRemoveFromHistory ? 224 : 176;
+            const margin = 8;
+            const left = Math.max(
+                margin,
+                Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - margin)
+            );
+            const openAbove = rect.top > 200 || rect.top > window.innerHeight - rect.bottom;
+            setMenuPos(
+                openAbove
+                    ? { left, bottom: window.innerHeight - rect.top + 8 }
+                    : { left, top: rect.bottom + 8 }
+            );
+        }
+        setShowMenu(true);
+    };
 
     const handlePlay = () => {
         if (isCurrentSong) {
@@ -119,42 +176,79 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
 
                 {/* Context menu button */}
                 <button
-                    onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                    className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                    ref={buttonRef}
+                    type="button"
+                    aria-label={`More actions for ${songTitle}`}
+                    aria-expanded={showMenu}
+                    onClick={toggleMenu}
+                    className={cn(
+                        'absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 transition-opacity hover:bg-black/80',
+                        showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                    )}
                 >
                     <MoreHorizontal className="h-4 w-4" />
                 </button>
-
-                {/* Context menu */}
-                {showMenu && (
-                    <div
-                        ref={menuRef}
-                        className="absolute bottom-10 right-2 w-44 rounded-xl bg-popover border border-border shadow-2xl py-1 z-50 animate-fade-in"
-                    >
-                        <button
-                            onClick={() => { addNext(track); setShowMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
-                        >
-                            <ListPlus className="h-4 w-4 text-muted-foreground" />
-                            Play next
-                        </button>
-                        <button
-                            onClick={() => { addToQueue(track); setShowMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
-                        >
-                            <ListEnd className="h-4 w-4 text-muted-foreground" />
-                            Add to queue
-                        </button>
-                        <button
-                            onClick={() => { toggleFavorite(track); setShowMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors"
-                        >
-                            <Heart className={cn('h-4 w-4', isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground')} />
-                            {isFavorite ? 'Unfavorite' : 'Favorite'}
-                        </button>
-                    </div>
-                )}
             </div>
+
+            {/* Context menu (portaled to avoid overflow clipping on cards and shelves) */}
+            {showMenu && menuPos && typeof document !== 'undefined' && createPortal(
+                <div
+                    ref={menuRef}
+                    role="menu"
+                    style={{
+                        left: `${menuPos.left}px`,
+                        top: menuPos.top !== undefined ? `${menuPos.top}px` : undefined,
+                        bottom: menuPos.bottom !== undefined ? `${menuPos.bottom}px` : undefined,
+                    }}
+                    className={cn(
+                        'fixed rounded-xl bg-popover border border-border shadow-2xl py-1 z-50 animate-fade-in',
+                        onRemoveFromHistory ? 'w-56' : 'w-44'
+                    )}
+                >
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); addNext(track); setShowMenu(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors text-left"
+                    >
+                        <ListPlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        Play next
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); addToQueue(track); setShowMenu(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors text-left"
+                    >
+                        <ListEnd className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        Add to queue
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(track); setShowMenu(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-white/[0.06] transition-colors text-left"
+                    >
+                        <Heart className={cn('h-4 w-4 shrink-0', isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground')} />
+                        {isFavorite ? 'Unfavorite' : 'Favorite'}
+                    </button>
+                    {onRemoveFromHistory && (
+                        <>
+                            <div className="my-1 border-t border-border" />
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={(e) => { e.stopPropagation(); onRemoveFromHistory(); setShowMenu(false); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-white/[0.06] transition-colors text-left"
+                            >
+                                <Trash2 className="h-4 w-4 shrink-0" />
+                                Remove from recently played
+                            </button>
+                        </>
+                    )}
+                </div>,
+                document.body
+            )}
 
             {/* Text info */}
             <p className="text-[13px] font-semibold text-foreground line-clamp-1 px-0.5">

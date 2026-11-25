@@ -319,6 +319,12 @@ const api = {
       listenedDuration: h.listenedDuration,
     }));
   },
+  removeFromHistory(id: string) {
+    return act('removeFromHistory', () => {
+      if (!id) throw new Error('removeFromHistory: id is required');
+      player().removeFromHistory(id);
+    }, id);
+  },
 
   // --- UI Panels ---
   panels: {
@@ -405,7 +411,7 @@ const api = {
       'shuffle()', 'repeat(mode?)',
       'favorites.list()', 'favorites.toggle(song)', 'favorites.isFav(id)', 'favorites.playAll()',
       'favorites.shufflePlay()', 'favorites.count()',
-      'history()',
+      'history()', 'removeFromHistory(id)',
       'panels.toggleQueue()', 'panels.toggleLyrics()', 'panels.toggleSidebar()',
       'panels.openQueue()', 'panels.closeQueue()', 'panels.openLyrics()', 'panels.closeLyrics()',
       'panels.setSidebarWidth(w?)', 'panels.setRightPanelWidth(w?)', 'panels.resetWidths()', 'panels.state()',

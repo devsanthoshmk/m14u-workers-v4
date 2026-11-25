@@ -40,6 +40,7 @@ const ALL_GLOBAL_TOP_OPTIONS = [
 
 export function HomePage() {
     const history = usePlayerStore(s => s.listeningHistory);
+    const removeFromHistory = usePlayerStore(s => s.removeFromHistory);
     const setQueue = usePlayerStore(s => s.setQueue);
     const provider = useCatalogStore(s => s.provider);
     const openSettings = useCatalogStore(s => s.openSettings);
@@ -304,6 +305,7 @@ export function HomePage() {
                                     index={index}
                                     highQualityArtwork
                                     onPlay={() => void playCatalogSelection(recent.map(r => r.song), index)}
+                                    onRemoveFromHistory={() => removeFromHistory(song.id)}
                                 />
                             </div>
                         ))}
