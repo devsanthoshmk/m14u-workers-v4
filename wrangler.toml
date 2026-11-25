@@ -1,3 +1,4 @@
+# Workers Builds deploys this top-level Worker for the app's workers.dev API URL.
 name = "m14u-api"
 main = "src/backend/worker.ts"
 compatibility_date = "2026-03-05"
