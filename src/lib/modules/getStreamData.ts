@@ -3,6 +3,8 @@ import type { AudioStream } from '@/types/music';
 import { isNative } from '@/lib/utils/platform';
 import StreamExtractor from '@/plugins/StreamExtractor';
 import { resolveWithLiveBundle } from './liveResolver';
+import { API_BASE_URL } from '@/utils/constants';
+import { isJioSaavnTrack, jioSaavnAudioUrl } from '@/services/jiosaavn';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -31,9 +33,35 @@ export default async function getStreamData(
 ): Promise<Invidious | Record<'error' | 'message', string>> {
 
   signal?.throwIfAborted();
+  if (isJioSaavnTrack(id)) {
+    const url = jioSaavnAudioUrl(id);
+    return url ? { title: '', adaptiveFormats: [{ url, type: 'audio/mp4', bitrate: '', encoding: 'aac' }] }
+      : { error: 'Playback unavailable', message: 'JioSaavn playback is unavailable here' };
+  }
   const cached = streamCache.get(id);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.data;
+  }
+
+  if (/^(archive|commons|audius|openverse|freetouse):/.test(id)) {
+    try {
+      const timeout = AbortSignal.timeout(7000);
+      const params = new URLSearchParams({ id });
+      const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/stream?${params}`, {
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      });
+      if (!response.ok) throw new Error('Track unavailable');
+      const data: Invidious = await response.json();
+      signal?.throwIfAborted();
+      if (!data.adaptiveFormats?.some(stream => stream.type.startsWith('audio/') && stream.url)) {
+        throw new Error('No playable audio');
+      }
+      streamCache.set(id, { data, timestamp: Date.now() });
+      return data;
+    } catch {
+      signal?.throwIfAborted();
+      return { error: 'Playback unavailable', message: 'The music API could not provide playable audio for this track' };
+    }
   }
 
   if (isNative()) {

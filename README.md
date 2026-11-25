@@ -1,8 +1,8 @@
 # M14U
 
-This repository contains the legacy Cloudflare Workers build. We're porting the backend to Oracle in the [main M14U repository](https://github.com/devsanthoshmk/M14U).
+M14U is a personal project that shows how a music player comes together, from catalog search to web and Android playback. The website defaults to Open Audio and can switch to the unofficial JioSaavn catalog in Settings. Both use the same player and pages. The Android app uses YouTube search and native Media3 playback, with no catalog switch.
 
-M14U is a music player for the web and Android. Both use the same React UI. On Android, Capacitor packages that UI and connects it to a native Kotlin player built on Media3. The Cloudflare Worker provides catalog metadata; audio is resolved and played by the client.
+This repository contains the React app, Cloudflare catalog Worker, and the JioSaavn service deployed from [`render/`](render/).
 
 ## Run locally
 
@@ -11,7 +11,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Vite serves the UI and mounts a local metadata API under `/api`. Search and playback still need network access to their upstream providers.
+Vite serves the UI and mounts the Worker catalog API under `/api`. JioSaavn uses the hosted Render service by default. Search and playback still need network access.
 
 ## Build and test
 
@@ -19,6 +19,8 @@ Vite serves the UI and mounts a local metadata API under `/api`. Search and play
 pnpm build          # Static web build in dist/
 pnpm typecheck
 pnpm test:ui
+pnpm test:catalog
+node --test render/web.test.mjs
 pnpm lint
 pnpm android:build  # Requires the Android SDK and JDK
 ```

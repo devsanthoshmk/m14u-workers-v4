@@ -8,6 +8,15 @@ Access via `window.m14u` in browser console.
 | `route(path)` | Navigate to route | `m14u.route('/search')` |
 | `currentRoute()` | Get current path | `m14u.currentRoute()` |
 
+## Website catalog
+
+| Function | Description | Example |
+|---|---|---|
+| `catalog(provider)` | Choose `open-audio` or `jiosaavn` without navigating. Cancels pending search and suggestions. | `m14u.catalog('jiosaavn')` |
+| `catalogSettings(open?)` | Open Settings, or close the catalog dialog with `false`. | `m14u.catalogSettings()` |
+
+These commands throw on Android. `favorites.list()` and `history()` read the saved library across catalogs, unlike the filtered website views.
+
 ## Search
 | Function | Description | Example |
 |---|---|---|

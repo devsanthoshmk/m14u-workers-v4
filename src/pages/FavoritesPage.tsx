@@ -7,9 +7,12 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { SongRow } from '@/components/song/SongRow';
 import { Heart, Play, Shuffle } from 'lucide-react';
 import type { TrackItem } from '@/types/music';
+import { matchesCatalog, useCatalogStore } from '@/stores/catalogStore';
 
 export function FavoritesPage() {
-    const favorites = usePlayerStore(s => s.favorites);
+    const library = usePlayerStore(s => s.favorites);
+    const provider = useCatalogStore(s => s.provider);
+    const favorites = library.filter(({ song }) => matchesCatalog(provider, song.id));
     const setQueue = usePlayerStore(s => s.setQueue);
 
     const songs = favorites.map(f => f.song as TrackItem);

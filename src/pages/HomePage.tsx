@@ -3,11 +3,13 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { SongCard } from '@/components/song/SongCard';
+import { matchesCatalog, useCatalogStore } from '@/stores/catalogStore';
 
 export function HomePage() {
     const history = usePlayerStore(s => s.listeningHistory);
     const setQueue = usePlayerStore(s => s.setQueue);
-    const recent = history.slice(0, 8);
+    const provider = useCatalogStore(s => s.provider);
+    const recent = history.filter(({ song }) => matchesCatalog(provider, song.id)).slice(0, 8);
 
     return (
         <div className="mx-auto w-full max-w-6xl px-5 py-7 md:px-8 md:py-10">

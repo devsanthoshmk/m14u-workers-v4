@@ -2,6 +2,8 @@
 
 Capacitor loads the same React UI as the browser from bundled assets. [`capacitor.config.ts`](../capacitor.config.ts) sets `webDir: 'dist'`; there is no active remote `server.url`. Publishing the web site does not update an installed APK.
 
+Android does not use the website's catalog switch, welcome dialog, or Render API. The bundled app sends `catalog=youtube` for search and suggestions to the configured Cloudflare catalog Worker; stream extraction and playback use the native path below.
+
 ## Native bridge
 
 [`MainActivity.java`](../android/app/src/main/java/dev/m14u/app/MainActivity.java) extends Capacitor’s `BridgeActivity` and registers three Kotlin plugins. Their client interfaces live in [`src/plugins/`](../src/plugins/).

@@ -20,6 +20,7 @@ globalThis.document = { activeElement: null };
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
 const server = await createServer({
     configFile: false,
+    define: { 'import.meta.env.VITE_JIOSAAVN_API_URL': JSON.stringify('https://saavn.example.test') },
     optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true, watch: null, ws: false },
     resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } },
@@ -36,6 +37,7 @@ const server = await createServer({
 });
 after(() => server.close());
 const { useSearchStore } = await server.ssrLoadModule('/src/lib/stores/search.ts');
+const { matchesCatalog, useCatalogStore } = await server.ssrLoadModule('/src/stores/catalogStore.ts');
 const { usePlayerStore } = await server.ssrLoadModule('/src/stores/playerStore.ts');
 const { registerConsoleAPI } = await server.ssrLoadModule('/src/lib/testing/console-api.ts');
 const { trackArtworkUrls } = await server.ssrLoadModule('/src/utils/trackArtwork.ts');
@@ -71,6 +73,38 @@ const player = usePlayerStore.getState;
 const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };
 globalThis.resolveTestStream = async () => stream;
+
+test('switching providers cancels the previous search and normalizes JioSaavn results', async (t) => {
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
+    const { choose } = useCatalogStore.getState();
+    t.after(() => { choose('open-audio'); });
+    const state = useSearchStore.getState;
+    const previous = state().search('music');
+    choose('jiosaavn');
+    assert.equal(requests[0].signal.aborted, true);
+    assert.deepEqual(state().results, []);
+    const next = state().search('music');
+    assert.equal(requests[1].url, 'https://saavn.example.test/api/search/songs?query=music');
+    requests[1].resolve(Response.json({ success: true, data: { results: [{ id: 'track-01', name: 'Song' }] } }));
+    await next;
+    requests[0].resolve(Response.json(tracks));
+    await previous;
+    assert.deepEqual(state().results.map(track => track.id), ['jiosaavn:track-01']);
+    choose('open-audio');
+    assert.deepEqual(state().results, []);
+    const back = state().search('music');
+    assert.match(requests[2].url, /\/api\/search\?q=music$/);
+    requests[2].resolve(Response.json(tracks));
+    await back;
+    assert.deepEqual(state().results, tracks);
+});
+
+test('catalog views keep saved JioSaavn and Open Audio tracks separate', () => {
+    const ids = ['jiosaavn:track-01', 'audius:track-02'];
+    assert.deepEqual(ids.filter(id => matchesCatalog('open-audio', id)), ['audius:track-02']);
+    assert.deepEqual(ids.filter(id => matchesCatalog('jiosaavn', id)), ['jiosaavn:track-01']);
+});
 
 test('search ignores late success and failure, including after Clear', async (t) => {
     const requests = [];

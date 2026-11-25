@@ -8,6 +8,8 @@ import { errorMessage, logEntry, logger, onErrorEntry, type LogEntry } from './l
 import { wait } from './wait';
 import { assert } from './assert';
 import { highlight, highlightButton, clearHighlights } from './highlight';
+import { isNative } from '@/lib/utils/platform';
+import { useCatalogStore } from '@/stores/catalogStore';
 
 const player = () => usePlayerStore.getState();
 const ui = () => useUIStore.getState();
@@ -65,6 +67,21 @@ function simpleQueue() {
 }
 
 const api = {
+  catalog(section: 'open-audio' | 'jiosaavn') {
+    return act('catalog', () => {
+      if (isNative()) throw new Error('Catalog settings are only available on the website');
+      if (section !== 'open-audio' && section !== 'jiosaavn') throw new Error(`Unknown catalog: ${section}`);
+      useCatalogStore.getState().choose(section);
+    }, section);
+  },
+  catalogSettings(open = true) {
+    return act('catalogSettings', () => {
+      if (isNative()) throw new Error('Catalog settings are only available on the website');
+      const settings = useCatalogStore.getState();
+      if (open) settings.openSettings();
+      else settings.closeDialog();
+    }, open);
+  },
   // --- Navigation ---
   route(path: string) {
     return act('route', () => {
@@ -284,7 +301,7 @@ const api = {
   // --- Meta ---
   help() {
     const cmds = [
-      'route(path)', 'currentRoute()', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
+      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
       'play(songOrIndex?)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',

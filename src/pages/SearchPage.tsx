@@ -7,13 +7,12 @@ import { useUIStore } from '@/stores/uiStore';
 import { useSearchStore } from '@/lib/stores/search';
 import { SongRow } from '@/components/song/SongRow';
 import { SongCard } from '@/components/song/SongCard';
-import { DEBOUNCE } from '@/utils/constants';
+import { API_BASE_URL, DEBOUNCE } from '@/utils/constants';
+import { isNative } from '@/lib/utils/platform';
+import { useCatalogStore } from '@/stores/catalogStore';
 import type { TrackItem } from '@/types/music';
 
-const SUGGESTIONS = [
-    'Believer', 'Shape of You', 'Blinding Lights', 'Starboy',
-    'Anirudh', 'AR Rahman', 'Bohemian Rhapsody', 'Despacito',
-];
+const SUGGESTIONS = ['Lofi', 'Jazz', 'Ambient', 'Piano'];
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
@@ -22,6 +21,9 @@ export function SearchPage() {
     const [visibleRecentCount, setVisibleRecentCount] = useState(3);
     const [isComposing, setIsComposing] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+    const [openDiscovery, setOpenDiscovery] = useState<{ openCatalog: boolean; tracks: TrackItem[] }>({ openCatalog: false, tracks: [] });
+    const provider = useCatalogStore(s => s.provider);
+    const discovery = provider === 'open-audio' ? openDiscovery : { openCatalog: false, tracks: [] };
     const inputRef = useRef<HTMLInputElement>(null);
     const suggestionsHeadingRef = useRef<HTMLHeadingElement>(null);
     const term = query.trim();
@@ -49,9 +51,22 @@ export function SearchPage() {
         if (!term || isComposing) return;
         const timer = window.setTimeout(() => runSearch(term), DEBOUNCE.SEARCH);
         return () => window.clearTimeout(timer);
-    }, [term, isComposing, runSearch]);
+    }, [term, isComposing, runSearch, provider]);
 
     useEffect(() => () => clearSearch(), [clearSearch]);
+
+    useEffect(() => {
+        if (isNative() || provider !== 'open-audio') return;
+        const request = new AbortController();
+        void fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/search-discovery`, { signal: request.signal })
+            .then(async response => {
+                if (!response.ok) return;
+                const data = await response.json();
+                if (!request.signal.aborted && typeof data?.openCatalog === 'boolean' && Array.isArray(data.tracks)) setOpenDiscovery(data);
+            })
+            .catch(() => { /* Search remains available without discovery. */ });
+        return () => request.abort();
+    }, [provider]);
 
     const updateQuery = (value: string) => {
         if (value.trim() !== term) clearSearch();
@@ -115,7 +130,7 @@ export function SearchPage() {
                                     clearQuery();
                                 }
                             }}
-                            placeholder="Search for tracks"
+                            placeholder={discovery.openCatalog ? 'Search by title, artist, or genre' : 'Search for tracks'}
                             className={`h-12 w-full rounded-xl border border-border bg-surface pl-11 pr-12 text-base text-foreground placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden ${focusRing}`}
                         />
                         {query && (
@@ -129,6 +144,9 @@ export function SearchPage() {
                             </button>
                         )}
                     </form>
+                    {discovery.openCatalog && (
+                        <p className="mt-2 text-xs text-muted-foreground">This catalog focuses on open and independent music. Try a genre like jazz or lo-fi.</p>
+                    )}
                 </div>
             </header>
 
@@ -201,10 +219,10 @@ export function SearchPage() {
                         )}
                         <section aria-labelledby="suggested-searches-heading">
                             <h2 id="suggested-searches-heading" ref={suggestionsHeadingRef} tabIndex={-1} className="mb-3 w-fit rounded-sm font-heading text-base font-bold focus:outline-primary">
-                                Popular track searches
+                                {discovery.openCatalog ? 'Try these searches' : 'Try a search'}
                             </h2>
                             <ul className="flex flex-wrap gap-2">
-                                {SUGGESTIONS.map((suggestion) => (
+                                {(discovery.openCatalog ? SUGGESTIONS : []).map((suggestion) => (
                                     <li key={suggestion}>
                                         <button type="button" onClick={() => selectSuggestion(suggestion)} className={`min-h-11 rounded-full bg-surface px-4 text-sm hover:bg-surface-hover hover:text-primary ${focusRing}`}>
                                             {suggestion}
@@ -212,6 +230,7 @@ export function SearchPage() {
                                     </li>
                                 ))}
                             </ul>
+                            {!discovery.openCatalog && <p className="text-sm text-muted-foreground">Start with a song title or an artist’s name.</p>}
                         </section>
                     </div>
                 )}
@@ -227,14 +246,32 @@ export function SearchPage() {
                     <div className="max-w-2xl rounded-xl border border-border bg-surface px-4 py-5 sm:px-5">
                         <h2 className="font-heading font-bold [overflow-wrap:anywhere]">{announcement}</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            {failed ? 'Check your connection and try again.' : 'Check the spelling or try a different song or artist.'}
+                            {failed ? 'Check your connection and try again.' : discovery.openCatalog
+                                ? 'That recording may not be in our open catalog. Try the artist’s name, a shorter title, or a genre.'
+                                : 'Check the spelling or try a different song or artist.'}
                         </p>
+                        {empty && discovery.openCatalog && (
+                            <ul className="mt-3 flex flex-wrap gap-2">
+                                {SUGGESTIONS.map(suggestion => (
+                                    <li key={suggestion}><button type="button" onClick={() => selectSuggestion(suggestion)} className={`min-h-11 rounded-full bg-surface-hover px-4 text-sm ${focusRing}`}>{suggestion}</button></li>
+                                ))}
+                            </ul>
+                        )}
                         {failed && (
                             <button type="button" onClick={() => { inputRef.current?.focus(); runSearch(term, true); }} className={`mt-3 min-h-11 rounded-lg bg-surface-hover px-4 text-sm font-medium ${focusRing}`}>
                                 Try again
                             </button>
                         )}
                     </div>
+                )}
+
+                {(!term || empty) && discovery.tracks.length > 0 && (
+                    <section aria-labelledby="discovery-heading" className="mt-6 max-w-2xl border-t border-border pt-4">
+                        <h2 id="discovery-heading" className="mb-2 font-heading text-base font-bold">{empty ? 'Play something else' : 'Start listening'}</h2>
+                        {discovery.tracks.map((song, index) => (
+                            <SongRow key={song.id} song={song} index={index} onPlay={() => void setQueue(discovery.tracks, index)} />
+                        ))}
+                    </section>
                 )}
 
                 {songs.length > 0 && (

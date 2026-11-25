@@ -5,10 +5,11 @@
  */
 
 import { NavLink } from 'react-router-dom';
-import { Home, Search, Heart, ListMusic, Radio } from 'lucide-react';
+import { Home, Search, Heart, ListMusic, Settings } from 'lucide-react';
 import { BrandLogo } from '@/components/BrandLogo';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/stores/uiStore';
+import { isNative } from '@/lib/utils/platform';
+import { useCatalogStore } from '@/stores/catalogStore';
 
 const NAV_ITEMS = [
     { to: '/', icon: Home, label: 'Home' },
@@ -51,22 +52,13 @@ export function Sidebar() {
                     ))}
                 </nav>
 
-                {/* ─── Listen Along (Coming Soon) ─── */}
-                <div className="px-3 mt-4">
-                    <button
-                        onClick={() => useUIStore.getState().setSnackbar('Listen Along is coming soon!')}
-                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[14px] font-medium text-muted-foreground/50 cursor-not-allowed"
-                        title="Coming Soon"
-                    >
-                        <div className="relative">
-                            <Radio className="h-[18px] w-[18px] flex-shrink-0" />
-                            <span className="absolute -top-1 -right-1 text-[8px] bg-amber-500 text-black px-1 rounded-full font-bold">
-                                SOON
-                            </span>
-                        </div>
-                        Listen Along
+                {!isNative() && <div className="mt-4 px-3">
+                    <button type="button" onClick={() => useCatalogStore.getState().openSettings()}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium text-muted-foreground hover:bg-white/[0.04] hover:text-foreground">
+                        <Settings className="size-[18px] shrink-0" />
+                        Settings
                     </button>
-                </div>
+                </div>}
 
                 {/* ─── Spacer + branding ─── */}
                 <div className="flex-1" />

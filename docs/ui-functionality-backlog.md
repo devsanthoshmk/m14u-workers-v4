@@ -1,6 +1,6 @@
 # UI functionality backlog
 
-Next pass for the web app and the Android Capacitor build. **Confirmed by code** means the implementation shows the problem; repro steps are not recorded test results. **Needs runtime verification** means browser, WebView, device, or service behavior must be measured before filing a bug. Start with P1; use controlled responses and known playable tracks so external provider failures don't obscure regressions.
+Historical backlog for the web app and Android build. Findings below record the code at the time of the audit, not current defects. Recheck against current code and runtime behavior before reopening an item. See [Architecture](ARCHITECTURE.md) for current behavior.
 
 ## Implementation and verification
 
@@ -8,7 +8,7 @@ The evidence below describes the original backlog. Run `npm run test:ui` for con
 
 - An active row is protected when other rows remain; removing the sole active row clears playback. Selecting a Recently Played card starts a new one-track queue.
 - History records once per playback after five seconds of media actually played (seeking alone does not count). End of song stops on the next natural track boundary, before repeat or queue advance.
-- Home remains history-first. Search is track-only with fixed starter queries. Share sends a track link, not player state or a Listen Along invite.
+- Home remains history-first. Web Search uses the selected catalog; only Open Audio shows discovery tracks and fixed starter queries. Share sends a track link, not player state or a Listen Along invite.
 - Packaged debug smoke test on Moto G45 5G (Android 15, WebView 159.0.8154.18): searching for “Believer” from `https://localhost` reached the configured API and displayed 20 results. This was an update install, not a clean release test. Full provider fallback, offline/reconnect, deployed-web comparison, safe-area, system Back, and background/lock-screen checks are still open.
 
 ## P1 — Fix core flows

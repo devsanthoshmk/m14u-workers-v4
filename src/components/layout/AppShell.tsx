@@ -8,8 +8,11 @@
 
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { isNative } from '@/lib/utils/platform';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
+import { CatalogDialog } from './CatalogDialog';
+import { useCatalogStore } from '@/stores/catalogStore';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { QueuePanel } from '@/components/queue/QueuePanel';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -62,12 +65,14 @@ export function AppShell() {
     const isNowPlaying = location.pathname === '/now-playing';
     const showRightPanel = !isNowPlaying && (isQueueOpen || isLyricsOpen) && !!currentSong;
     const isKeepAliveRoute = ['/', '/search', '/favorites'].includes(location.pathname);
+    const native = isNative();
+    useEffect(() => { useCatalogStore.getState().showIntro(); }, []);
 
     const rightPanelKey = isQueueOpen ? 'queue' : 'lyrics';
 
     return (
         <>
-            {!onboardingDone && <OnboardingModal />}
+            {native ? !onboardingDone && <OnboardingModal /> : <CatalogDialog />}
 
             <div className="flex h-dvh w-full flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
                 <div className="flex flex-1 overflow-hidden">

@@ -11,6 +11,7 @@ window.m14u
         ├── useUIStore.getState()      — panels, sidebar
         ├── useSearchStore.getState()  — search results, suggestions
         ├── useListStore.getState()    — album/artist/playlist loading
+        ├── useCatalogStore.getState() — browser catalog selection and settings dialog
         ├── routerRef                  — React Router navigate/location
         ├── logger                     — structured log buffer
         ├── wait                       — poll-based waiters

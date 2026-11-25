@@ -11,6 +11,8 @@ pnpm dev
 
 Vite’s dev middleware handles relative `/api` calls by default. It still needs access to upstream services. `pnpm preview` serves a built bundle and does not mount the dev API middleware.
 
+Default song search mixes Audius, Openverse's Jamendo music index, and non-premium Free To Use tracks (`MUSIC_CATALOG=open`). Free To Use is subject to its separate [license](https://freetouse.com/license), including creator credit and noncommercial restrictions. Saved Archive and Commons tracks still resolve for playback. Set `MUSIC_CATALOG=archive` for Archive only or `MUSIC_CATALOG=youtube` to restore YouTube search. See the [provider research](open-music-api-research.md).
+
 ## Build-time environment
 
 Vite exposes `VITE_*` values to client code. Treat them as public, and rebuild after changing them. Use `.env.local` for local overrides or set variables in the build environment. See [`.env.production`](../.env.production) for the checked-in production API URL.
@@ -18,12 +20,23 @@ Vite exposes `VITE_*` values to client code. Treat them as public, and rebuild a
 | Variable | Purpose |
 | --- | --- |
 | `VITE_API_URL` | Catalog API origin. When unset, the client uses relative `/api` URLs. The packaged Android app needs a reachable API origin because it does not run the Vite middleware. |
-| `VITE_INVIDIOUS_URL` | Preferred Invidious provider. The client can still try other defaults on a normal play request. |
+| `VITE_JIOSAAVN_API_URL` | Optional override for the website's JioSaavn API. Defaults to `https://m14u-jiosaavn.onrender.com`. Android does not use it. |
+| `VITE_INVIDIOUS_URL` | Preferred Invidious provider for YouTube tracks. Normal playback can try other defaults. |
 | `VITE_FIREBASE_API_KEY` | Optional restricted Firebase web API key. Vite generates `/firebase-messaging-sw.js` only when this is set. GitHub Actions reads it from a repository secret of the same name. Set it in your web host's build environment for web deployments. |
 | `VITE_RESOLVER_MANIFEST_URL`, `VITE_RESOLVER_PUBLIC_KEY` | Enable the optional Android live resolver. See [signing and setup](LIVE-RESOLVER-SETUP.md). |
+
+### Render catalog service
+
+Deploy the same repository on Render with root directory `render`, build command `bash build.sh`, start command `node --conditions=production start.mjs`, and health check `/healthz` (see `render.yaml`). If using a different Render hostname, set `VITE_JIOSAAVN_API_URL` and rebuild the website. Deploy the catalog Worker before shipping an APK that requests `catalog=youtube`.
+
+To run Render locally, use Node.js 22.20.0 (the deployed version), run `bash render/build.sh`, then `node --conditions=production render/start.mjs`. Set `VITE_JIOSAAVN_API_URL=http://localhost:10000` in `.env.local` and restart Vite. Check `/healthz`; `node --test render/web.test.mjs` exercises search forwarding and audio range handling with mocks.
+
+Before retiring the old deployment, verify live search, playback, and seeking on the website. Switch back to Open Audio and check that JioSaavn tracks no longer appear in Search, Home, or Favorites and that the current track and queue remain intact. Verify YouTube search and playback on an Android device.
 
 ## Hosting and Android tooling
 
 Deploy `dist/` to a static host with a fallback to `index.html` for client-side routes. Host the metadata API separately using the Worker in [`wrangler.toml`](../wrangler.toml), or route same-origin `/api/*` requests to it if the client uses relative URLs. Check the API origin from the deployed web app and packaged Android WebView.
 
-For Android, use JDK 17 and an Android SDK with the compile platform in [`android/variables.gradle`](../android/variables.gradle) installed. Set your SDK path through Android Studio or `ANDROID_HOME`. Use the checked-in Gradle wrapper via `pnpm android:build`; see [Android build and smoke checks](CAPACITOR.md#build-and-verify).
+For `m14u.pages.dev`, deploy the top-level `m14u-api` Worker (the `workers.dev` origin in `.env.production`) and rebuild/redeploy the Pages frontend from the same revision. Verify `/api/search?q=Bach`, then use a returned ID in `/api/stream?id=…` and play it in the Pages UI. The Worker returns details and a direct MP3 or Ogg URL; it does not relay audio bytes.
+
+For Android, use JDK 21 and an Android SDK with the compile platform in [`android/variables.gradle`](../android/variables.gradle) installed. Set your SDK path through Android Studio or `ANDROID_HOME`. Use the checked-in Gradle wrapper via `pnpm android:build`; see [Android build and smoke checks](CAPACITOR.md#build-and-verify).

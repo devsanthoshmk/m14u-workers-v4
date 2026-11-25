@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { TrackItem, YTListItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
+import { isNative } from '@/lib/utils/platform';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { searchJioSaavn } from '@/services/jiosaavn';
 
 const API_BASE = `${API_BASE_URL}/api`;
 let activeSearch: AbortController | undefined;
@@ -33,12 +36,15 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
 
   try {
     const params = new URLSearchParams({ q: query });
+    if (isNative()) params.set('catalog', 'youtube');
     if (filter && filter !== 'all') params.set('f', filter);
 
-    const res = await fetch(`${API_BASE}/search?${params}`, { signal: request.signal });
-    if (!res.ok) throw new Error('Search failed');
-
-    const data = await res.json();
+    const data = !isNative() && useCatalogStore.getState().provider === 'jiosaavn'
+      ? await searchJioSaavn(query, request.signal)
+      : await fetch(`${API_BASE}/search?${params}`, { signal: request.signal }).then(res => {
+          if (!res.ok) throw new Error('Search failed');
+          return res.json();
+        });
     if (request.signal.aborted) return;
     const results: SearchState['results'] = Array.isArray(data) ? data : [];
     setState({ results, isLoading: false });
@@ -65,10 +71,13 @@ export async function getSuggestionsWithResults(query: string): Promise<string[]
   activeSuggestions = request;
   try {
     const params = new URLSearchParams({ q: query, music: 'true' });
-    const res = await fetch(`${API_BASE}/search-suggestions?${params}`, { signal: request.signal });
-    if (!res.ok) throw new Error('Suggestions failed');
-
-    const data = await res.json();
+    if (isNative()) params.set('catalog', 'youtube');
+    const data = !isNative() && useCatalogStore.getState().provider === 'jiosaavn'
+      ? [...new Set((await searchJioSaavn(query, request.signal)).map(track => track.title))].slice(0, 8)
+      : await fetch(`${API_BASE}/search-suggestions?${params}`, { signal: request.signal }).then(res => {
+          if (!res.ok) throw new Error('Suggestions failed');
+          return res.json();
+        });
     if (request.signal.aborted) return;
     const suggestions: string[] = Array.isArray(data) ? data : [];
     setState({ suggestions });
@@ -101,3 +110,7 @@ export const useSearchStore = create<SearchState>((set) => ({
     set({ query: '', results: [], suggestions: [], error: null, isLoading: false });
   }
 }));
+
+useCatalogStore.subscribe((state, previous) => {
+  if (state.provider !== previous.provider) useSearchStore.getState().clearSearch();
+});
