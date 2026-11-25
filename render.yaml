@@ -3,6 +3,8 @@ services:
     name: m14u-jiosaavn
     runtime: node
     plan: free
+    branch: main
+    autoDeployTrigger: commit
     rootDir: render
     buildCommand: bash build.sh
     startCommand: node --conditions=production start.mjs

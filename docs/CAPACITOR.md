@@ -20,7 +20,7 @@ On a device, check search from the packaged WebView, audible playback and seekin
 
 ## GitHub releases
 
-Increase `versionCode` and update `versionName` in `android/app/build.gradle`. Push the commit and a matching stable tag (`v` followed by `versionName`). [GitHub Actions](../.github/workflows/build-apk.yml) verifies and publishes `m14u.apk` on tag pushes; branch builds only upload debug artifacts.
+Increase `versionCode` and update `versionName` in `android/app/build.gradle`. Push the commit and a matching stable tag (`v` followed by `versionName`). [GitHub Actions](../.github/workflows/build-apk.yml) verifies and publishes `m14u.apk` on version tag pushes, not ordinary branch pushes. A manual run without `verify_release` still uploads a debug APK.
 
 To check release signing without publishing, run the workflow manually on `main` with `verify_release` enabled. Download the `m14u-release` artifact from the run.
 
