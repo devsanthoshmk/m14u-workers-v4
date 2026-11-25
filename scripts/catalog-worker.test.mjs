@@ -19,6 +19,95 @@ beforeEach(t => {
   t.mock.method(Innertube, 'create', () => { throw new Error('Unexpected Innertube setup'); });
 });
 
+test('YouTube mode skips open discovery on an Open Audio deployment', async () => {
+  const result = await request('search-discovery?catalog=youtube', 'GET', { MUSIC_CATALOG: 'open' });
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { openCatalog: false, tracks: [] });
+});
+
+test('open search resolves the exact public MP3 with artwork, without Innertube', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input);
+    calls.push(url.pathname);
+    assert.equal(url.origin, 'https://archive.org');
+    if (url.pathname === '/advancedsearch.php') {
+      assert.match(url.searchParams.get('q'), /title:"test"/);
+      return Response.json({ response: { docs: [{ identifier: 'open-album', title: 'Test album' }] } });
+    }
+    assert.equal(url.pathname, '/metadata/open-album');
+    return Response.json({
+      metadata: { mediatype: 'audio', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/', creator: 'Open Artist' },
+      files: [
+        { name: 'disc one/Track #1.mp3', title: 'Track One', length: '65.5' },
+        { name: 'private.mp3', private: 'true' },
+        { name: '../escape.mp3' },
+        { name: 'notes.pdf' },
+      ],
+    });
+  });
+  const env = { MUSIC_CATALOG: 'archive' };
+  const search = await request('search?q=test', 'GET', env);
+  assert.equal(search.status, 200);
+  const tracks = await search.json();
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].title, 'Track One');
+  assert.equal(tracks[0].duration, '1:05');
+  assert.equal(tracks[0].img, 'https://archive.org/services/img/open-album');
+  const stream = await request(`stream?${new URLSearchParams({ id: tracks[0].id })}`, 'GET', env);
+  assert.equal(stream.status, 200);
+  assert.equal(stream.headers.get('Cache-Control'), 'no-store');
+  const details = await stream.json();
+  assert.equal(details.sourceUrl, 'https://archive.org/details/open-album');
+  assert.equal(details.adaptiveFormats[0].url, 'https://archive.org/download/open-album/disc%20one/Track%20%231.mp3');
+  const missing = await request('stream?id=archive:open-album:private.mp3', 'GET', env);
+  assert.equal(missing.status, 404);
+  const invalid = await request('stream?id=archive:evil.example:..%252Fescape.mp3', 'GET', env);
+  assert.equal(invalid.status, 404);
+  assert.equal(calls.length, 4);
+});
+
+test('stream rechecks Archive rights instead of trusting a track ID', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    metadata: { mediatype: 'audio', licenseurl: 'https://unrelated.example/publicdomain/zero/1.0/' },
+    files: [{ name: 'track.mp3' }],
+  }));
+  const response = await request('stream?id=archive:item:track.mp3');
+  assert.equal(response.status, 404);
+});
+
+test('song search skips broad archives, survives an outage and preserves saved Commons playback', async t => {
+  const audius = { id: 'aBc', title: 'Open Song', permalink: '/artist/open-song', license: 'Attribution CC BY',
+    is_streamable: true, access: { stream: true } };
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input);
+    calls.push(url.hostname);
+    if (url.hostname === 'api.openverse.org') {
+      assert.equal(url.searchParams.get('category'), 'music');
+      return Response.json({ results: [] });
+    }
+    if (url.hostname === 'api.freetouse.com') return new Response(null, { status: 503 });
+    if (url.hostname === 'commons.wikimedia.org') return Response.json({ query: { pages: [{
+      pageid: 42, title: 'File:Piano.oga', imageinfo: [{ mime: 'application/ogg', url: 'https://upload.wikimedia.org/test.oga',
+        extmetadata: { LicenseUrl: { value: 'https://creativecommons.org/licenses/by/4.0/' } } }],
+    }] } });
+    assert.equal(url.hostname, 'api.audius.co');
+    return Response.json({ data: url.pathname.endsWith('/search')
+      ? [audius, { ...audius, id: 'private', access: { stream: false } }] : audius });
+  });
+  const search = await request('search?q=piano', 'GET', { MUSIC_CATALOG: 'open' });
+  assert.equal(search.headers.get('Cache-Control'), 'no-store');
+  const results = await search.json();
+  assert.deepEqual(results.map(track => track.id), ['audius:aBc']);
+  assert.ok(!calls.includes('archive.org') && !calls.includes('commons.wikimedia.org'));
+  assert.ok(results.every(track => !('url' in track)));
+  const commons = await (await request('stream?id=commons:42')).json();
+  assert.equal(commons.adaptiveFormats[0].type, 'audio/ogg');
+  const audio = await (await request('stream?id=audius:aBc')).json();
+  assert.equal(audio.adaptiveFormats[0].url, 'https://api.audius.co/v1/tracks/aBc/stream');
+});
+
 test('local validation, not found and CORS preflight keep their contracts', async () => {
   const invalid = await request('search');
   assert.equal(invalid.status, 400);

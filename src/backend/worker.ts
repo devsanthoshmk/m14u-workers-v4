@@ -8,13 +8,17 @@ import getSearchSuggestions from './getSearchSuggestions.js';
 import getSimilar from './getSimilar.js';
 import getSubFeed from './getSubFeed.js';
 import { ProviderBudget, ProviderTimeout } from './providerBudget.js';
+import { searchArchive, suggestArchive } from './archiveCatalog.js';
+import { featuredOpen, resolveOpen, searchOpen, suggestOpen } from './openCatalog.js';
 import type { Request } from '@cloudflare/workers-types';
 
 export interface Env {
   LASTFM_API_KEY?: string;
+  MUSIC_CATALOG?: string;
 }
 
 class InvalidCatalogRequest extends Error {}
+class TrackNotFound extends Error {}
 
 export default {
   async fetch(
@@ -43,6 +47,9 @@ export default {
 
     try {
       let data: unknown;
+      const catalog = searchParams.get('catalog') === 'youtube' ? 'youtube' : env?.MUSIC_CATALOG;
+      const archiveSearch = catalog === 'archive' || catalog === 'open';
+      const federatedSearch = catalog === 'open';
 
       switch (path) {
         case 'album': {
@@ -79,15 +86,30 @@ export default {
         case 'search': {
           const q = searchParams.get('q');
           const f = searchParams.get('f');
-          if (!q) throw new InvalidCatalogRequest('Missing q parameter');
-          data = await getSearch(budget, { q, f: f || undefined });
+          if (!q?.trim()) throw new InvalidCatalogRequest('Missing q parameter');
+          if (archiveSearch && q.length > 160) throw new InvalidCatalogRequest('Query too long');
+          data = archiveSearch && (!f || f === 'all' || f === 'song')
+            ? await (federatedSearch ? searchOpen : searchArchive)(budget, q.trim())
+            : await getSearch(budget, { q, f: f || undefined });
           break;
         }
         case 'search-suggestions': {
           const q = searchParams.get('q');
           const music = searchParams.get('music') === 'true';
-          if (!q) throw new InvalidCatalogRequest('Missing q parameter');
-          data = await getSearchSuggestions(budget, { q, music });
+          if (!q?.trim()) throw new InvalidCatalogRequest('Missing q parameter');
+          if (archiveSearch && q.length > 160) throw new InvalidCatalogRequest('Query too long');
+          data = archiveSearch ? await (federatedSearch ? suggestOpen : suggestArchive)(budget, q.trim()) : await getSearchSuggestions(budget, { q, music });
+          break;
+        }
+        case 'search-discovery': {
+          data = { openCatalog: archiveSearch, tracks: federatedSearch ? await featuredOpen(budget) : [] };
+          break;
+        }
+        case 'stream': {
+          const id = searchParams.get('id');
+          if (!id) throw new InvalidCatalogRequest('Missing id parameter');
+          data = await resolveOpen(budget, id);
+          if (!data) throw new TrackNotFound();
           break;
         }
         case 'similar': {
@@ -118,16 +140,19 @@ export default {
           ...corsHeaders,
           'Content-Type': 'application/json',
           // Preserve fallback payloads without letting transient failures stick in cache.
-          'Cache-Control': budget.cacheable ? 's-maxage=86400, stale-while-revalidate=3600' : 'no-store'
+          'Cache-Control': !budget.cacheable || path === 'stream' ? 'no-store'
+            : path === 'search-discovery' || (archiveSearch && (path === 'search' || path === 'search-suggestions')) ? 'public, max-age=60, s-maxage=300'
+            : 's-maxage=86400, stale-while-revalidate=3600'
         }
       });
     } catch (err) {
       const invalid = err instanceof InvalidCatalogRequest;
       const timeout = budget.expired || err instanceof ProviderTimeout ||
         (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError'));
-      const status = invalid ? 400 : timeout ? 504 : 500;
-      const message = invalid ? err.message : timeout ? 'Catalog provider timed out' : 'Catalog operation failed';
-      if (!invalid) console.error({ event: 'catalog_request_failed', route: path, status });
+      const absent = err instanceof TrackNotFound;
+      const status = invalid ? 400 : absent ? 404 : timeout ? 504 : 500;
+      const message = invalid ? err.message : absent ? 'Track unavailable' : timeout ? 'Catalog provider timed out' : 'Catalog operation failed';
+      if (!invalid && !absent) console.error({ event: 'catalog_request_failed', route: path, status });
       return new Response(JSON.stringify({ error: message }), {
         status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }

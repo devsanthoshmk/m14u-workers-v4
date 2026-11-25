@@ -16,7 +16,7 @@ export function createLocalAdapter(): Connect.NextHandleFunction {
       const apiKey = process.env.LASTFM_API_KEY;
       const response = await worker.fetch(
         { url: url.href, method: req.method || 'GET' },
-        apiKey ? { LASTFM_API_KEY: apiKey } : undefined
+        { LASTFM_API_KEY: apiKey, MUSIC_CATALOG: process.env.MUSIC_CATALOG ?? 'open' }
       );
 
       res.statusCode = response.status;

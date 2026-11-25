@@ -90,6 +90,9 @@ export interface ErrorResponse {
 
 // ytify-style types with backwards compatibility
 export interface TrackItem {
+    sourceUrl?: string;
+    licenseUrl?: string;
+    licenseLabel?: string;
     // ytify style
     id: string;
     title: string;
