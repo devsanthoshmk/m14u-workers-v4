@@ -457,3 +457,10 @@ test('end-of-song stops before repeat or advance, and history records once', asy
     await player().next();
     assert.equal(player().currentSong.id, 'B');
 });
+
+test('catalog settings modal can be opened and closed', () => {
+    useCatalogStore.getState().openSettings();
+    assert.equal(useCatalogStore.getState().dialog, 'settings');
+    useCatalogStore.getState().closeDialog();
+    assert.equal(useCatalogStore.getState().dialog, null);
+});

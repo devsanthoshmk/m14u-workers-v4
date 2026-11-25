@@ -79,7 +79,6 @@ const api = {
   },
   catalogSettings(open = true) {
     return act('catalogSettings', () => {
-      if (isNative()) throw new Error('Catalog settings are only available on the website');
       const settings = useCatalogStore.getState();
       if (open) settings.openSettings();
       else settings.closeDialog();
@@ -131,6 +130,9 @@ const api = {
   },
   globalTopLanguage(language?: string) {
     return this.globalTopFilter(language);
+  },
+  completeListeningSetup() {
+    return act('completeListeningSetup', () => useListeningPreferences.getState().completeSetup());
   },
   // --- Navigation ---
   route(path: string) {
@@ -370,7 +372,7 @@ const api = {
   // --- Meta ---
   help() {
     const cmds = [
-      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'globalTopFilter(language?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
+      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'globalTopFilter(language?)', 'completeListeningSetup()', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
       'play(songOrIndex?)', 'playSearchResult(index)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',

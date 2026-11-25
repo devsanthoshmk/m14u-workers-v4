@@ -6,6 +6,7 @@ import {
     Sparkles,
     Disc3,
     Languages,
+    Settings2,
     ShieldCheck,
     AlertCircle,
     ChevronLeft,
@@ -41,6 +42,7 @@ export function HomePage() {
     const history = usePlayerStore(s => s.listeningHistory);
     const setQueue = usePlayerStore(s => s.setQueue);
     const provider = useCatalogStore(s => s.provider);
+    const openSettings = useCatalogStore(s => s.openSettings);
     const chooseCatalog = useCatalogStore(s => s.choose);
 
     const { languages } = useListeningPreferences();
@@ -235,6 +237,16 @@ export function HomePage() {
                         </div>
                     </div>
 
+                    {/* Move Settings from bottom nav to top right on Home for mobile */}
+                    <button
+                        type="button"
+                        onClick={openSettings}
+                        aria-label="Settings"
+                        title="Open Settings"
+                        className="md:hidden inline-flex items-center justify-center size-9 rounded-xl bg-surface border border-border text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+                    >
+                        <Settings2 className="size-5" />
+                    </button>
                 </div>
 
                 {/* On desktop, keep the annotated badges and actions */}

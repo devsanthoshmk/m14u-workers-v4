@@ -8,7 +8,6 @@
 
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { isNative } from '@/lib/utils/platform';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
 import { CatalogDialog } from './CatalogDialog';
@@ -20,7 +19,6 @@ import { useUIStore } from '@/stores/uiStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { usePlayerStore } from '@/stores/playerStore';
-import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { routerRef } from '@/lib/testing/router-ref';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -59,20 +57,21 @@ export function AppShell() {
     }, [navigate, location]);
     const isQueueOpen = useUIStore(s => s.isQueueOpen);
     const isLyricsOpen = useUIStore(s => s.isLyricsOpen);
-    const onboardingDone = useUIStore(s => s.onboardingDone);
     const currentSong = usePlayerStore(s => s.currentSong);
 
     const isNowPlaying = location.pathname === '/now-playing';
     const showRightPanel = !isNowPlaying && (isQueueOpen || isLyricsOpen) && !!currentSong;
     const isKeepAliveRoute = ['/', '/search', '/favorites'].includes(location.pathname);
-    const native = isNative();
-    useEffect(() => { useCatalogStore.getState().showIntro(); }, []);
+
+    useEffect(() => {
+        useCatalogStore.getState().showIntro();
+    }, []);
 
     const rightPanelKey = isQueueOpen ? 'queue' : 'lyrics';
 
     return (
         <>
-            {native ? !onboardingDone && <OnboardingModal /> : <CatalogDialog />}
+            <CatalogDialog />
 
             <div className="flex h-dvh w-full flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
                 <div className="flex flex-1 overflow-hidden">

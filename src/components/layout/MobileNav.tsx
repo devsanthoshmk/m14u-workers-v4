@@ -1,14 +1,12 @@
 /**
  * Mobile bottom navigation.
  * Psychology: Bottom nav is within thumb reach (Thumb Zone UX).
- * Icons + labels because icon-only nav has 20%+ lower tap accuracy.
+ * 4 destinations evenly spread across the width.
  */
 
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Search, Heart, ListMusic, Settings } from 'lucide-react';
+import { Home, Search, Heart, ListMusic } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isNative } from '@/lib/utils/platform';
-import { useCatalogStore } from '@/stores/catalogStore';
 
 const NAV_ITEMS = [
     { to: '/', label: 'Home', icon: Home },
@@ -21,7 +19,7 @@ export function MobileNav() {
     const location = useLocation();
 
     return (
-        <nav className="flex items-center justify-around border-t border-border/50 bg-card/80 glass px-1 pb-[env(safe-area-inset-bottom)]">
+        <nav aria-label="Mobile navigation" className="grid grid-cols-4 items-center border-t border-border/50 bg-card/80 glass px-1 pb-[env(safe-area-inset-bottom)]">
             {NAV_ITEMS.map(({ to, label, icon: Icon }) => {
                 const isActive = location.pathname === to;
                 return (
@@ -29,7 +27,7 @@ export function MobileNav() {
                         key={to}
                         to={to}
                         className={cn(
-                            'flex flex-col items-center gap-0.5 py-2 px-3 text-[10px] font-medium transition-colors min-w-[60px]',
+                            'flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors w-full',
                             isActive ? 'text-primary' : 'text-muted-foreground'
                         )}
                     >
@@ -38,12 +36,6 @@ export function MobileNav() {
                     </NavLink>
                 );
             })}
-
-            {!isNative() && <button type="button" onClick={() => useCatalogStore.getState().openSettings()}
-                className="flex min-w-[60px] flex-col items-center gap-0.5 px-2 py-2 text-[10px] font-medium text-muted-foreground">
-                <Settings className="h-5 w-5" />
-                <span>Settings</span>
-            </button>}
         </nav>
     );
 }

@@ -13,12 +13,13 @@ Access via `window.m14u` in browser console.
 | Function | Description | Example |
 |---|---|---|
 | `catalog(provider)` | Choose `open-audio` or `jiosaavn` without navigating. Cancels pending search and suggestions. | `m14u.catalog('jiosaavn')` |
-| `catalogSettings(open?)` | Open Settings, or close the catalog dialog with `false`. | `m14u.catalogSettings()` |
+| `catalogSettings(open?)` | Open Settings on web or Android, or close it with `false`. | `m14u.catalogSettings()` |
 | `musicLanguage(language?)` | Read or set the listening language. Pass an empty string for no preference. | `m14u.musicLanguage('tamil')` |
 | `musicLanguages(languages?)` | Read or set multiple listening languages. Pass an empty array or string for no preference. | `m14u.musicLanguages(['tamil', 'telugu'])` |
 | `globalTopFilter(language?)` | Read or set the local language filter for the Global Top section on Home. | `m14u.globalTopFilter('tamil')` |
+| `completeListeningSetup()` | Mark first-run listening setup complete locally. | `m14u.completeListeningSetup()` |
 
-These commands throw on Android. `favorites.list()` and `history()` read the saved library across catalogs, unlike the filtered website views.
+`catalog(provider)` throws on Android. `favorites.list()` and `history()` read the saved library across catalogs, unlike the filtered website views.
 
 ## Search
 | Function | Description | Example |
