@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, X, Clock, Loader2, MoreHorizontal } from 'lucide-react';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useUIStore } from '@/stores/uiStore';
 import { useSearchStore } from '@/lib/stores/search';
 import { SongRow } from '@/components/song/SongRow';
@@ -19,7 +20,11 @@ const SUGGESTIONS = ['Lofi', 'Jazz', 'Ambient', 'Piano'];
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 export function SearchPage() {
-    const [query, setQuery] = useState('');
+    const location = useLocation();
+    const navigate = useNavigate();
+    // AppShell keeps this page mounted outside /search.
+    const isSearchRoute = location.pathname === '/search';
+    const query = isSearchRoute ? new URLSearchParams(location.search).get('q') ?? '' : '';
     const [visibleRecentCount, setVisibleRecentCount] = useState(3);
     const [isComposing, setIsComposing] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -51,10 +56,14 @@ export function SearchPage() {
     }, [addRecentSearch, search]);
 
     useEffect(() => {
-        if (!term || isComposing) return;
+        if (!isSearchRoute || isComposing) return;
+        if (!term) {
+            clearSearch();
+            return;
+        }
         const timer = window.setTimeout(() => runSearch(term), DEBOUNCE.SEARCH);
         return () => window.clearTimeout(timer);
-    }, [term, isComposing, runSearch, provider]);
+    }, [isSearchRoute, term, isComposing, runSearch, provider, clearSearch]);
 
     useEffect(() => () => clearSearch(), [clearSearch]);
 
@@ -72,8 +81,15 @@ export function SearchPage() {
     }, [provider]);
 
     const updateQuery = (value: string) => {
+        if (!isSearchRoute) return;
+        const params = new URLSearchParams(location.search);
+        if (value) params.set('q', value);
+        else params.delete('q');
+        const search = params.toString();
+        const nextSearch = search ? `?${search}` : '';
+        if (nextSearch === location.search) return;
         if (value.trim() !== term) clearSearch();
-        setQuery(value);
+        navigate({ pathname: location.pathname, search: nextSearch, hash: location.hash }, { replace: true, state: location.state });
     };
 
     const clearQuery = () => {
