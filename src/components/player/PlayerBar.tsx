@@ -66,8 +66,7 @@ export function PlayerBar() {
     const songTitle = currentSong.name || currentSong.title;
     const songArtist = currentSong.artist?.name || currentSong.author;
     const artwork = compactTrackArtworkUrls(currentSong, 120);
-    const favoriteId = currentSong.videoId || currentSong.id;
-    const isFavorite = favoriteId ? usePlayerStore.getState().isFavorite(favoriteId) : false;
+    const isFavorite = songId ? usePlayerStore.getState().isFavorite(songId) : false;
 
     const displayTime = isSeeking ? seekValue : currentTime;
     const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
