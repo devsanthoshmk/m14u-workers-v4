@@ -163,6 +163,23 @@ export function SongCard({ song, onPlay, highQualityArtwork }: SongCardProps) {
             <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5 px-0.5">
                 {songArtist}
             </p>
+            {track.licenseLabel && (
+                <p className="text-[10px] text-emerald-400/90 font-medium line-clamp-1 mt-0.5 px-0.5" title={track.licenseLabel}>
+                    {track.licenseUrl ? (
+                        <a
+                            href={track.licenseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:underline"
+                        >
+                            {track.licenseLabel}
+                        </a>
+                    ) : (
+                        track.licenseLabel
+                    )}
+                </p>
+            )}
         </div>
     );
 }
