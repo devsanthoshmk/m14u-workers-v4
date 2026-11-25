@@ -114,6 +114,24 @@ const api = {
       return useListeningPreferences.getState().languages;
     }, languages);
   },
+  globalTopFilter(language?: string) {
+    return act('globalTopFilter', () => {
+      const uiState = useUIStore.getState();
+      if (language !== undefined) {
+        if (!language || language.toLowerCase() === 'all') {
+          uiState.setGlobalTopLanguage('');
+        } else {
+          const value = normalizeMusicLanguage(language);
+          if (!value) throw new Error(`Unknown listening language: ${language}`);
+          uiState.setGlobalTopLanguage(value);
+        }
+      }
+      return useUIStore.getState().globalTopLanguage;
+    }, language);
+  },
+  globalTopLanguage(language?: string) {
+    return this.globalTopFilter(language);
+  },
   // --- Navigation ---
   route(path: string) {
     return act('route', () => {
@@ -352,7 +370,7 @@ const api = {
   // --- Meta ---
   help() {
     const cmds = [
-      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
+      'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'globalTopFilter(language?)', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
       'play(songOrIndex?)', 'playSearchResult(index)', 'playAlternative(index)', 'pause()', 'toggle()', 'next()', 'prev()', 'seek(s)', 'nowPlaying()',
       'volume(level?)', 'mute()', 'unmute()', 'toggleMute()',
       'queue.list()', 'queue.add(song)', 'queue.addNext(song)', 'queue.remove(i)', 'queue.clear()',

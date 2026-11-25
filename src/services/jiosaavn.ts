@@ -18,9 +18,11 @@ const row = (value: unknown): Row => value && typeof value === 'object' ? value 
 const rows = (value: unknown) => Array.isArray(value) ? value.map(row) : [];
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 
-export async function searchJioSaavn(query: string, signal: AbortSignal): Promise<TrackItem[]> {
+export async function searchJioSaavn(query: string, signal: AbortSignal, limit?: number): Promise<TrackItem[]> {
     if (isNative()) throw new Error('JioSaavn is only available on the website');
-    const res = await fetch(`${origin}/api/search/songs?${new URLSearchParams({ query })}`, {
+    const params = new URLSearchParams({ query });
+    if (limit !== undefined) params.set('limit', String(limit));
+    const res = await fetch(`${origin}/api/search/songs?${params}`, {
         signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
     });
     if (!res.ok) throw new Error(`JioSaavn returned ${res.status}`);

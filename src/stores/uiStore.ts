@@ -29,6 +29,10 @@ interface UIStore {
     // Snackbar
     snackbar: string;
 
+    // Global Top section language filter
+    globalTopLanguage: string;
+    setGlobalTopLanguage: (language: string) => void;
+
     // Actions
     toggleQueue: () => void;
     setQueueOpen: (open: boolean) => void;
@@ -61,6 +65,9 @@ export const useUIStore = create<UIStore>()(
             isNowPlayingExpanded: false,
             isRoomPanelOpen: false,
             snackbar: '',
+            globalTopLanguage: '',
+
+            setGlobalTopLanguage: (language: string) => set({ globalTopLanguage: language }),
 
             toggleQueue: () => set(s => ({
                 isQueueOpen: !s.isQueueOpen,
