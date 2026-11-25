@@ -288,7 +288,10 @@ export function SearchPage() {
                                 : 'No matching alternatives found.'}
                         </p>
                         {songDiscovery.alternatives.length > 0 && (
-                            <div className="mt-3">
+                            <div className="mt-4">
+                                <h3 id="alternatives-heading" className="mb-2 font-heading text-sm font-bold text-foreground">
+                                    Alternatives
+                                </h3>
                                 {songDiscovery.alternatives.map((song, index) => (
                                     <SongRow key={song.id} song={song} index={index} onPlay={() => void setQueue(songDiscovery.alternatives, index)} />
                                 ))}
