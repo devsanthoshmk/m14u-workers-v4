@@ -120,7 +120,8 @@ export default {
           if (!/^[\w-]{1,64}$/.test(id) || !title || !artist || title.length > 200 || artist.length > 200) {
             throw new InvalidCatalogRequest('Invalid JioSaavn seed');
           }
-          data = await recommendSaavn(budget, id, title, artist);
+          const exclude = searchParams.getAll('exclude').slice(0, 30).filter(key => key.length <= 200);
+          data = await recommendSaavn(budget, id, title, artist, exclude);
           break;
         }
         case 'stream': {

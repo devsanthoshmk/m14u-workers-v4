@@ -404,6 +404,36 @@ test('Open Audio selection plays first, appends unique recommendations, and igno
     assert.deepEqual(player().queue, []);
 });
 
+test('JioSaavn refills only near the queue end and cancels on Clear', async t => {
+    const { startSaavnQueue } = await server.ssrLoadModule('/src/services/saavnQueue.ts');
+    useCatalogStore.getState().choose('jiosaavn');
+    globalThis.resolveTestStream = async () => stream;
+    const make = n => ({ id: `jiosaavn:s${n}`, title: `Song ${n}`, author: 'Artist', type: 'song' });
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
+    const initial = startSaavnQueue(make(0));
+    requests[0].resolve(Response.json(Array.from({ length: 8 }, (_, i) => make(i + 1))));
+    await initial;
+    assert.equal(player().queue.length, 9);
+    await player().playFromQueue(4);
+    assert.equal(requests.length, 1);
+    await player().playFromQueue(5);
+    assert.equal(requests.length, 2);
+    assert.match(requests[1].url, /id=s5/);
+    assert.match(requests[1].url, /exclude=song\+1%7Cartist/);
+    requests[1].resolve(Response.json([{ ...make(0), id: 'jiosaavn:copy' }, make(9)]));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(player().queue.at(-1).song.id, 'jiosaavn:s9');
+    assert.equal(player().queue.length, 10);
+    await player().playFromQueue(6);
+    player().clearQueue();
+    assert.equal(requests[2].signal.aborted, true);
+    requests[2].resolve(Response.json([make(10)]));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(player().queue, []);
+    useCatalogStore.getState().choose('open-audio');
+});
+
 test('Clear cancels pending stream resolution and permits a fresh selection', async () => {
     let complete;
     globalThis.resolveTestStream = () => new Promise(resolve => { complete = resolve; });
