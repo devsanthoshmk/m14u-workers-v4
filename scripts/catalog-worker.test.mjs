@@ -38,11 +38,13 @@ test('JioSaavn recommendations exclude other releases of the seed and duplicate 
   const song = (id, name, artist = 'Sabrina Carpenter') => ({ id, name, artists: { primary: [{ name: artist }] } });
   t.mock.method(globalThis, 'fetch', async input => {
     assert.equal(new URL(input).searchParams.get('query'), 'Sabrina Carpenter');
-    return Response.json({ success: true, data: { results: [song('copy', 'Espresso'), song('one', 'Taste'),
-      song('copy2', 'TASTE'), song('other', 'Unrelated', 'Another Artist'), song('two', 'Please Please Please')] } });
+    return Response.json({ success: true, data: { results: [song('copy', 'Espresso (From “Soundtrack”)'), song('one', 'Taste (From "Soundtrack")'),
+      song('copy2', 'TASTE'), song('other', 'Unrelated', 'Another Artist'), song('two', 'Please Please Please'), song('live', 'Taste (Live)')] } });
   });
   const response = await request('saavn-recommendations?id=seed&title=Espresso&artist=Sabrina+Carpenter');
-  assert.deepEqual((await response.json()).map(song => song.id), ['jiosaavn:one', 'jiosaavn:two']);
+  assert.deepEqual((await response.json()).map(song => song.id), ['jiosaavn:one', 'jiosaavn:two', 'jiosaavn:live']);
+  const refill = await request('saavn-recommendations?id=seed&title=Espresso&artist=Sabrina+Carpenter&exclude=taste%7Csabrina+carpenter');
+  assert.deepEqual((await refill.json()).map(song => song.id), ['jiosaavn:two', 'jiosaavn:live']);
 });
 
 test('YouTube mode skips open discovery on an Open Audio deployment', async () => {

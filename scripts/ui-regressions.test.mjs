@@ -421,7 +421,7 @@ test('JioSaavn refills only near the queue end and cancels on Clear', async t =>
     assert.equal(requests.length, 2);
     assert.match(requests[1].url, /id=s5/);
     assert.match(requests[1].url, /exclude=song\+1%7Cartist/);
-    requests[1].resolve(Response.json([{ ...make(0), id: 'jiosaavn:copy' }, make(9)]));
+    requests[1].resolve(Response.json([{ ...make(0), id: 'jiosaavn:copy', title: 'Song 0 (From "Scene")', author: 'Guest, Artist' }, make(9)]));
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(player().queue.at(-1).song.id, 'jiosaavn:s9');
     assert.equal(player().queue.length, 10);

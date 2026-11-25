@@ -1,4 +1,4 @@
-import { songIdentity } from '@/lib/utils/songIdentity';
+import { songIdentityKeys } from '@/lib/utils/songIdentity';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { TrackItem } from '@/types/music';
@@ -13,7 +13,7 @@ export function startSaavnQueue(seed: TrackItem) {
     const playback = usePlayerStore.getState().setQueue([seed]);
     const session = new AbortController();
     const attempted = new Set<string>();
-    const seenSongs = new Set([songIdentity(seed.title, seed.author)]);
+    const seenSongs = new Set(songIdentityKeys(seed.title, seed.author));
     const seenIds = new Set([seed.id]);
     let pending = false;
 
@@ -50,15 +50,15 @@ export function startSaavnQueue(seed: TrackItem) {
             if (!Array.isArray(tracks) || signal.aborted) return;
             const queued = usePlayerStore.getState().queue;
             const queuedIds = new Set(queued.map(row => row.song.id));
-            const queuedSongs = new Set(queued.map(row => songIdentity(row.song.title, row.song.author)));
+            const queuedSongs = new Set(queued.flatMap(row => songIdentityKeys(row.song.title, row.song.author)));
             let added = 0;
             for (const item of tracks) {
                 if (signal.aborted || added >= batchSize) break;
                 if (!item || !saavnId.test(item.id) || typeof item.title !== 'string' || typeof item.author !== 'string') continue;
-                const key = songIdentity(item.title, item.author);
-                if (queuedIds.has(item.id) || queuedSongs.has(key) || seenIds.has(item.id) || seenSongs.has(key)) continue;
+                const keys = songIdentityKeys(item.title, item.author);
+                if (queuedIds.has(item.id) || seenIds.has(item.id) || keys.some(key => queuedSongs.has(key) || seenSongs.has(key))) continue;
                 seenIds.add(item.id);
-                seenSongs.add(key);
+                keys.forEach(key => seenSongs.add(key));
                 usePlayerStore.getState().addToQueue(item);
                 added++;
             }

@@ -2,7 +2,7 @@ import type { TrackItem } from '../types/music.js';
 import type { ProviderBudget } from './providerBudget.js';
 import getSearch from './getSearch.js';
 import getUpNext from './getUpNext.js';
-import { normalizeSongText as normalize, songIdentity } from '../lib/utils/songIdentity.js';
+import { canonicalSongTitle, normalizeSongText as normalize, songIdentityKeys } from '../lib/utils/songIdentity.js';
 
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 const batchSize = 8;
@@ -12,31 +12,32 @@ type Song = { id?: unknown; name?: unknown; duration?: unknown; primaryArtists?:
 export async function recommendSaavn(budget: ProviderBudget, id: string, title: string, author: string, exclude: string[] = []): Promise<TrackItem[]> {
   const artist = author.split(',')[0].trim();
   const artistKey = normalize(artist);
-  if (!artistKey || !normalize(title)) return [];
+  const seedTitle = canonicalSongTitle(title);
+  if (!artistKey || !seedTitle) return [];
   const excluded = new Set(exclude);
   const fresh = (tracks: TrackItem[]) => {
     const seen = new Set(excluded);
     return tracks.filter(track => {
-      const key = songIdentity(track.title, track.author);
-      if (seen.has(key)) return false;
-      seen.add(key);
+      const keys = songIdentityKeys(track.title, track.author);
+      if (keys.some(key => seen.has(key))) return false;
+      keys.forEach(key => seen.add(key));
       return true;
     }).slice(0, batchSize);
   };
-  const artistTracks = await lookup(budget, artist, artistKey, id, normalize(title), excluded);
+  const artistTracks = await lookup(budget, artist, artistKey, id, seedTitle, excluded);
   if (artistTracks.length >= batchSize) return artistTracks;
   let tracks: TrackItem[] = artistTracks;
   try {
     // A generic artist search can return only compilation copies of the seed.
     const seed = (await getSearch(budget, { q: `${title} ${artist}`, f: 'song' })).find(track =>
-      track.type === 'song' && normalize(track.title) === normalize(title) &&
+      track.type === 'song' && canonicalSongTitle(track.title) === seedTitle &&
       normalize(track.author.replace(/\s+-\s+Topic$/i, '')) === artistKey);
     if (!seed) return artistTracks;
-    const related = (await getUpNext(budget, seed.id)).filter(track => normalize(track.title) !== normalize(title) &&
-      !excluded.has(songIdentity(track.title, track.author)));
+    const related = (await getUpNext(budget, seed.id)).filter(track => canonicalSongTitle(track.title) !== seedTitle &&
+      !songIdentityKeys(track.title, track.author).some(key => excluded.has(key)));
     for (let i = 0; i < related.length; i += 3) {
       const matches = await budget.map(related.slice(i, i + 3), track => lookup(budget, `${track.title} ${track.author}`,
-        normalize(track.author.split(',')[0].replace(/\s+-\s+Topic$/i, '')), id, normalize(title), excluded, normalize(track.title)));
+        normalize(track.author.split(',')[0].replace(/\s+-\s+Topic$/i, '')), id, seedTitle, excluded, canonicalSongTitle(track.title)));
       tracks = fresh([...tracks, ...matches.flat()]);
       if (tracks.length >= batchSize) break;
     }
@@ -56,10 +57,10 @@ async function lookup(budget: ProviderBudget, query: string, artistKey: string, 
       return payload.data.results.flatMap(song => {
         const rawId = text(song?.id);
         const name = text(song?.name);
-        const key = normalize(name);
+        const key = canonicalSongTitle(name);
         const names = (Array.isArray(song?.artists?.primary) ? song.artists.primary.map(item => text(item?.name)).filter(Boolean) : []);
         if (!names.length) names.push(...text(song?.primaryArtists).split(',').filter(Boolean));
-        if (!/^[\w-]{1,64}$/.test(rawId) || rawId === id || !key || seen.has(key) || excluded.has(songIdentity(name, names.join(', '))) ||
+        if (!/^[\w-]{1,64}$/.test(rawId) || rawId === id || !key || seen.has(key) || songIdentityKeys(name, names.join(', ')).some(key => excluded.has(key)) ||
           (exactTitle && key !== exactTitle) || !names.some(name => normalize(name) === artistKey)) return [];
         seen.add(key);
         const seconds = Number(song.duration);
