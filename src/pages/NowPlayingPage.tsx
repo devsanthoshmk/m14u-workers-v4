@@ -41,6 +41,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSleepTimer } from '@/hooks/useSleepTimer';
 import { formatDuration } from '@/utils/format';
+import { trackProviderUrl, trackShareUrl } from '@/utils/trackShare';
 import { ProgressBar } from '@/components/player/ProgressBar';
 import { PlayerControls } from '@/components/player/PlayerControls';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -127,6 +128,7 @@ export function NowPlayingPage() {
     };
 
     const songId = currentSong?.videoId || currentSong?.id;
+    const providerUrl = currentSong && trackProviderUrl(currentSong);
     const title = currentSong?.name || currentSong?.title || 'Untitled track';
     const artist = currentSong?.artist?.name || currentSong?.author || 'Unknown artist';
     const album = currentSong?.album?.name;
@@ -159,9 +161,9 @@ export function NowPlayingPage() {
 
     // Handle native share
     const handleShare = async () => {
-        if (!songId) return;
+        if (!currentSong) return;
         setShareMessage('');
-        const shareUrl = `https://youtu.be/${songId}`;
+        const shareUrl = trackShareUrl(currentSong, window.location.origin);
         if (navigator.share) {
             try {
                 await navigator.share({
@@ -180,9 +182,9 @@ export function NowPlayingPage() {
 
     // Direct clipboard copy
     const handleCopyLink = useCallback(async () => {
-        if (!songId) return;
+        if (!currentSong) return;
         try {
-            await navigator.clipboard.writeText(`https://youtu.be/${songId}`);
+            await navigator.clipboard.writeText(trackShareUrl(currentSong, window.location.origin));
             setCopied(true);
             setShareMessage('Track link copied.');
             setTimeout(() => setCopied(false), 2200);
@@ -190,7 +192,7 @@ export function NowPlayingPage() {
             setCopied(false);
             setShareMessage('Could not copy the track link. Check clipboard permissions and try again.');
         }
-    }, [songId]);
+    }, [currentSong]);
 
     return (
         <section
@@ -1014,15 +1016,15 @@ export function NowPlayingPage() {
                                 <span>{copied ? 'Link Copied!' : 'Share Track'}</span>
                             </button>
 
-                            {songId && (
+                            {providerUrl && (
                                 <a
-                                    href={`https://youtu.be/${songId}`}
+                                    href={providerUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-sm text-foreground transition-colors"
                                 >
                                     <ExternalLink className="size-4 text-muted-foreground" />
-                                    <span>Open on YouTube</span>
+                                    <span>Open source</span>
                                 </a>
                             )}
                         </div>
@@ -1097,14 +1099,14 @@ export function NowPlayingPage() {
                                 {copied ? <Check className="size-3.5 text-emerald-400" /> : <Share2 className="size-3.5" />}
                                 {copied ? 'Copied Link' : 'Copy Link'}
                             </button>
-                            {songId && (
+                            {providerUrl && (
                                 <a
-                                    href={`https://youtu.be/${songId}`}
+                                    href={providerUrl}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="flex-1 py-2.5 rounded-xl bg-amber-400 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all"
                                 >
-                                    <ExternalLink className="size-3.5" /> Open YouTube
+                                    <ExternalLink className="size-3.5" /> Open source
                                 </a>
                             )}
                         </div>
