@@ -20,14 +20,21 @@ Vite exposes `VITE_*` values to client code. Treat them as public, and rebuild a
 | Variable | Purpose |
 | --- | --- |
 | `VITE_API_URL` | Catalog API origin. When unset, the client uses relative `/api` URLs. The packaged Android app needs a reachable API origin because it does not run the Vite middleware. |
-| `VITE_JIOSAAVN_API_URL` | Optional override for the website's JioSaavn API. Defaults to `https://m14u-jiosaavn.onrender.com`. Android does not use it. |
+| `VITE_JIOSAAVN_API_URL` | Optional override for primary JioSaavn search. Defaults to `https://m14u-jiosaavn.vercel.app`. Android does not use it. |
+| `VITE_JIOSAAVN_FALLBACK_URL` | Optional override for the Render search fallback and audio relay. Defaults to `https://m14u-jiosaavn.onrender.com`. Android does not use it. |
 | `VITE_INVIDIOUS_URL` | Preferred Invidious provider for YouTube tracks. Normal playback can try other defaults. |
 | `VITE_FIREBASE_API_KEY` | Optional restricted Firebase web API key. Vite generates `/firebase-messaging-sw.js` only when this is set. GitHub Actions reads it from a repository secret of the same name. Set it in your web host's build environment for web deployments. |
 | `VITE_RESOLVER_MANIFEST_URL`, `VITE_RESOLVER_PUBLIC_KEY` | Enable the optional Android live resolver. See [signing and setup](LIVE-RESOLVER-SETUP.md). |
 
+### Vercel JioSaavn search
+
+The [`jiosaavn-api/`](../jiosaavn-api/) directory is deployed as a standalone Vercel project. The website tries it first and retries on Render if search fails or times out. Playback uses Render directly for its audio relay and byte-range support. This is website search failover, not a redirect on the Vercel hostname.
+
+The [GitHub Actions workflow](../.github/workflows/jiosaavn.yml) checks `ODSkyler/jiosaavn-api` `main` hourly (GitHub may delay scheduled runs). It syncs the search handler and license, tests the adapter, deploys it, verifies live search, and records the deployed upstream SHA on this repository's `main`. It deliberately does not publish other upstream routes, including the unrestricted media proxy. To enable deployments, set the repository Actions secret `VERCEL_TOKEN` with access to the project. The workflow must be allowed to push sync commits to `main`. Use **Actions → Sync and deploy JioSaavn search → Run workflow** for an immediate sync.
+
 ### Render catalog service
 
-Deploy the same repository on Render with root directory `render`, build command `bash build.sh`, start command `node --conditions=production start.mjs`, and health check `/healthz` (see `render.yaml`). If using a different Render hostname, set `VITE_JIOSAAVN_API_URL` and rebuild the website. Deploy the catalog Worker before shipping an APK that requests `catalog=youtube`.
+Deploy the same repository on Render with root directory `render`, build command `bash build.sh`, start command `node --conditions=production start.mjs`, and health check `/healthz` (see `render.yaml`). If using a different Render hostname, set `VITE_JIOSAAVN_FALLBACK_URL` and rebuild the website. Deploy the catalog Worker before shipping an APK that requests `catalog=youtube`.
 
 Sync `render.yaml` through a Render Blueprint on `main`. If the existing `m14u-jiosaavn` service is managed directly instead, verify its linked branch is `main` and set **Auto-Deploy → On Commit**. Render skips pushes with no changes under the `render` root directory.
 

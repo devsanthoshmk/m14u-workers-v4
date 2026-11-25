@@ -3,14 +3,15 @@ import type { TrackItem } from '@/types/music';
 import { formatDuration } from '@/utils/format';
 import { normalizeMusicLanguage } from '@/lib/utils/musicLanguage';
 
-const origin = (import.meta.env.VITE_JIOSAAVN_API_URL?.trim() || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
+export const jioSaavnSearchOrigin = (import.meta.env.VITE_JIOSAAVN_API_URL?.trim() || 'https://m14u-jiosaavn.vercel.app').replace(/\/+$/, '');
+const renderOrigin = (import.meta.env.VITE_JIOSAAVN_FALLBACK_URL?.trim() || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
 const songPrefix = 'jiosaavn:';
 export const isJioSaavnTrack = (id: unknown) => typeof id === 'string' && id.startsWith(songPrefix);
 
 export function jioSaavnAudioUrl(id: string) {
     const rawId = id.slice(songPrefix.length);
     if (isNative() || !isJioSaavnTrack(id) || !/^[\w-]{1,64}$/.test(rawId)) return null;
-    return `${origin}/api/audio/${encodeURIComponent(rawId)}`;
+    return `${renderOrigin}/api/audio/${encodeURIComponent(rawId)}`;
 }
 
 type Row = Record<string, unknown>;
@@ -22,17 +23,29 @@ export async function searchJioSaavn(query: string, signal: AbortSignal, limit?:
     if (isNative()) throw new Error('JioSaavn is only available on the website');
     const params = new URLSearchParams({ query });
     if (limit !== undefined) params.set('limit', String(limit));
-    const res = await fetch(`${origin}/api/search/songs?${params}`, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
-    });
-    if (!res.ok) throw new Error(`JioSaavn returned ${res.status}`);
-    const payload = row(await res.json());
-    signal.throwIfAborted();
-    const { results } = row(payload.data);
-    if (payload.success !== true || !Array.isArray(results)) throw new Error('Invalid JioSaavn response');
+    async function search(origin: string, timeout: number) {
+        const res = await fetch(`${origin}/api/search/songs?${params}`, {
+            signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
+        });
+        if (!res.ok) throw new Error(`JioSaavn returned ${res.status}`);
+        const payload = row(await res.json());
+        signal.throwIfAborted();
+        const { results } = row(payload.data);
+        if (payload.success !== true || !Array.isArray(results)) throw new Error('Invalid JioSaavn response');
+        return rows(results);
+    }
+
+    let results;
+    try {
+        results = await search(jioSaavnSearchOrigin, jioSaavnSearchOrigin === renderOrigin ? 60000 : 8000);
+    } catch (error) {
+        signal.throwIfAborted();
+        if (jioSaavnSearchOrigin === renderOrigin) throw error;
+        results = await search(renderOrigin, 60000);
+    }
 
     const seen = new Set<string>();
-    return rows(results).flatMap(song => {
+    return results.flatMap(song => {
         const id = text(song.id);
         const title = text(song.name) || text(song.title);
         if (!/^[\w-]{1,64}$/.test(id) || !title || seen.has(id)) return [];

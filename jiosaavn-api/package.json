@@ -1,0 +1,6 @@
+{
+  "name": "m14u-jiosaavn-api",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.x" }
+}

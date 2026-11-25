@@ -1,7 +1,7 @@
 import type { Song, TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 import { isNative } from '@/lib/utils/platform';
-import { searchJioSaavn } from '@/services/jiosaavn';
+import { jioSaavnSearchOrigin, searchJioSaavn } from '@/services/jiosaavn';
 import { normalizeMusicLanguage, normalizeMusicLanguages, rankSongsByLanguage } from '@/lib/utils/musicLanguage';
 import { useListeningPreferences, MUSIC_LANGUAGES } from '@/stores/listeningPreferences';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -284,7 +284,6 @@ export function getDiagnostics(provider: WebCatalog): ResolverDiagnostics {
         || 'https://invidious.fdn.fr';
 
     const baseUrl = API_BASE_URL.replace(/\/+$/, '') || '(relative /api)';
-    const saavnOrigin = (import.meta.env.VITE_JIOSAAVN_API_URL?.trim() || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
 
     // Live resolver check
     const manifestUrl = import.meta.env.VITE_RESOLVER_MANIFEST_URL;
@@ -328,7 +327,7 @@ export function getDiagnostics(provider: WebCatalog): ResolverDiagnostics {
         return {
             platform: 'Web Browser',
             catalogName: 'JioSaavn',
-            catalogSourceUrl: `${saavnOrigin}/api/search/songs`,
+            catalogSourceUrl: `${jioSaavnSearchOrigin}/api/search/songs`,
             listeningLanguage: langLabel,
             streamPrimary: 'Render relay /api/audio/:id (AAC byte-ranges)',
             liveResolverStatus: 'Web uses direct audio endpoints',

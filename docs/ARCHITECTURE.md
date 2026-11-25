@@ -21,7 +21,7 @@ In default `MUSIC_CATALOG=open` mode, the Worker merges unfiltered/song search f
 
 The client calls `/api/*` under `VITE_API_URL` when set, or uses relative URLs. [`vite.config.ts`](../vite.config.ts) mounts [`localAdapter.ts`](../src/backend/localAdapter.ts) for Vite development. The production API entry point configured in [`wrangler.toml`](../wrangler.toml) is [`worker.ts`](../src/backend/worker.ts).
 
-Browser JioSaavn searches also check YouTube Music in parallel without delaying primary results. A likely title match gets a targeted JioSaavn lookup before being reported as missing. `/api/up-next?id=…` provides up to twelve YouTube Music recommendations; the client shows only title-and-artist matches from JioSaavn. If none match, it searches JioSaavn for other tracks credited to the artist. Discovery failures leave the primary results intact.
+Browser JioSaavn search tries Vercel first and retries on Render on failure. Searches also check YouTube Music in parallel without delaying primary results. A likely title match gets a targeted JioSaavn lookup before being reported as missing. `/api/up-next?id=…` provides up to twelve YouTube Music recommendations; the client shows only title-and-artist matches from JioSaavn. If none match, it searches JioSaavn for other tracks credited to the artist. Discovery failures leave the primary results intact.
 
 Both API entry points use handlers in [`src/backend/`](../src/backend/). Those handlers query YouTube through `youtubei.js`/Innertube and normalize responses into app types. The Worker exposes search, suggestions, album, artist, channel, gallery, playlist, similar, and subfeed handlers. A handler’s presence does not imply a dedicated screen for it.
 
