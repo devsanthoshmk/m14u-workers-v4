@@ -56,6 +56,12 @@ test('track metadata normalizes legacy IDs and preserves catalog duration labels
     assert.equal(trackDurationSeconds({ ...catalog, duration: '2M views' }), undefined);
 });
 
+test('catalog filtering skips saved tracks without usable IDs', () => {
+    const ids = [undefined, null, 42, '', 'legacy-youtube-id', 'jiosaavn:track-01'];
+    assert.deepEqual(ids.filter(id => matchesCatalog('open-audio', id)), ['legacy-youtube-id']);
+    assert.deepEqual(ids.filter(id => matchesCatalog('jiosaavn', id)), ['jiosaavn:track-01']);
+});
+
 test('media artwork prefers a full-size cover and keeps fallbacks', () => {
     const img = 'https://lh3.googleusercontent.com/cover=w60-h60-l90-rj';
     const largest = 'https://example.test/large.jpg';

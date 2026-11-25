@@ -3,8 +3,10 @@ import { isNative } from '@/lib/utils/platform';
 import { isJioSaavnTrack } from '@/services/jiosaavn';
 
 export type WebCatalog = 'open-audio' | 'jiosaavn';
-export function matchesCatalog(provider: WebCatalog, trackId: string) {
-    return isNative() || (provider === 'jiosaavn') === isJioSaavnTrack(trackId);
+export function matchesCatalog(provider: WebCatalog, trackId: unknown) {
+    // Older saved entries may lack a normalized track ID. Leave them in storage.
+    return typeof trackId === 'string' && trackId.length > 0 &&
+        (isNative() || (provider === 'jiosaavn') === isJioSaavnTrack(trackId));
 }
 const catalogKey = 'm14u-web-catalog';
 const introKey = 'm14u-web-intro-views';

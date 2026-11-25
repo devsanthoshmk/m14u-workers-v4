@@ -4,7 +4,7 @@ import { formatDuration } from '@/utils/format';
 
 const origin = (import.meta.env.VITE_JIOSAAVN_API_URL?.trim() || 'https://m14u-jiosaavn.onrender.com').replace(/\/+$/, '');
 const songPrefix = 'jiosaavn:';
-export const isJioSaavnTrack = (id: string) => id.startsWith(songPrefix);
+export const isJioSaavnTrack = (id: unknown) => typeof id === 'string' && id.startsWith(songPrefix);
 
 export function jioSaavnAudioUrl(id: string) {
     const rawId = id.slice(songPrefix.length);
