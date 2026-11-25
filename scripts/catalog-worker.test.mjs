@@ -39,7 +39,8 @@ test('JioSaavn recommendations exclude other releases of the seed and duplicate 
   t.mock.method(globalThis, 'fetch', async input => {
     assert.equal(new URL(input).searchParams.get('query'), 'Sabrina Carpenter');
     return Response.json({ success: true, data: { results: [song('copy', 'Espresso (From “Soundtrack”)'), song('one', 'Taste (From "Soundtrack")'),
-      song('copy2', 'TASTE'), song('localized', 'Taste (From "Soundtrack (Telugu)")'), song('other', 'Unrelated', 'Another Artist'),
+      song('copy2', 'TASTE'), song('localized', 'Taste (From "Soundtrack (Telugu)")'), song('quotes', "Taste (From ''Soundtrack'')"),
+      song('other', 'Unrelated', 'Another Artist'),
       song('two', 'Please Please Please'), song('live', 'Taste (Live)')] } });
   });
   const response = await request('saavn-recommendations?id=seed&title=Espresso&artist=Sabrina+Carpenter');

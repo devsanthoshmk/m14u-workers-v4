@@ -3,7 +3,7 @@ export const normalizeSongText = (value: string) => value.normalize('NFKC').toLo
 
 export function canonicalSongTitle(title: string) {
     // Soundtrack singles often add a quoted film credit that the album release omits.
-    return normalizeSongText(title.normalize('NFKC').replace(/\s*[[(]\s*from\s+(?:"[^"]+"|“[^”]+”|'[^']+'|‘[^’]+’)\s*[\])]\s*$/iu, ''));
+    return normalizeSongText(title.normalize('NFKC').replace(/\s*[[(]\s*from\s+(?:"[^"]+"|“[^”]+”|''.+?''|'.+?'|‘.+?’)\s*[\])]\s*$/iu, ''));
 }
 
 export function songIdentityKeys(title: string, author: string) {
