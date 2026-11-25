@@ -3,7 +3,6 @@ import type { AudioStream } from '@/types/music';
 import { isNative } from '@/lib/utils/platform';
 import StreamExtractor from '@/plugins/StreamExtractor';
 import { resolveWithLiveBundle } from './liveResolver';
-import { proxyHandler } from '@/lib/utils/helpers';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -23,53 +22,6 @@ export interface Invidious {
   streamProxy?: string;
   recommendedVideos?: unknown[];
   [key: string]: unknown;
-}
-
-async function fetchInvidious(proxy: string, id: string, signal?: AbortSignal): Promise<Invidious> {
-  const timeout = AbortSignal.timeout(PROVIDER_TIMEOUT);
-  const res = await fetch(`${proxy}/api/v1/videos/${encodeURIComponent(id)}?fields=adaptiveFormats,title`, {
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  });
-  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-  const data = await res.json();
-  if (!Array.isArray(data?.adaptiveFormats) || !data.adaptiveFormats.some((f: AudioStream) => f?.type?.startsWith('audio/') && f.url)) {
-    throw new Error('No audio streams found');
-  }
-  return { ...data, streamProxy: proxy };
-}
-
-let probe: Promise<void> | undefined;
-function probeAudio(url: string) {
-  return new Promise<void>((resolve, reject) => {
-    const audio = new Audio();
-    const finish = (ok: boolean) => {
-      clearTimeout(timer);
-      audio.onloadedmetadata = audio.onerror = null;
-      audio.removeAttribute('src');
-      audio.load();
-      if (ok) resolve();
-      else reject(new Error('Provider sample audio unavailable'));
-    };
-    const timer = setTimeout(() => finish(false), PROVIDER_TIMEOUT);
-    audio.preload = 'metadata';
-    audio.onloadedmetadata = () => finish(true);
-    audio.onerror = () => finish(false);
-    audio.src = url;
-  });
-}
-
-export function checkWebProviders() {
-  if (isNative()) return;
-  probe ??= Promise.any([...new Set([import.meta.env.VITE_INVIDIOUS_URL?.trim().replace(/\/+$/, ''), ...instances].filter(Boolean))]
-    .map(async proxy => {
-      const data = await fetchInvidious(proxy, 'aqz-KE-bpKQ');
-      const stream = data.adaptiveFormats.find(format => format?.type?.startsWith('audio/') && format.url);
-      if (!stream) throw new Error('No sample audio format');
-      await probeAudio(proxyHandler(stream.url, proxy));
-      return proxy;
-    }))
-    .then(proxy => { usePlayerStore.setState({ proxy }); })
-    .catch(() => undefined);
 }
 
 export default async function getStreamData(
@@ -118,11 +70,27 @@ export default async function getStreamData(
     }
   }
 
-  const fetchData = (proxy: string) => fetchInvidious(proxy, id, signal);
+  const fetchData = async (proxy: string): Promise<Invidious> => {
+    const timeout = AbortSignal.timeout(PROVIDER_TIMEOUT);
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const res = await fetch(`${proxy}/api/v1/videos/${encodeURIComponent(id)}?fields=adaptiveFormats,title`, { signal: requestSignal });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+
+    if (!data || !('adaptiveFormats' in data) || !Array.isArray(data.adaptiveFormats)) {
+      throw new Error(data?.error || 'Invalid response: adaptiveFormats missing or not an array');
+    }
+
+    if (!data.adaptiveFormats.some((f: AudioStream) => f?.type?.startsWith('audio/') && f.url)) {
+      throw new Error('Invalid response: no audio streams found');
+    }
+
+    return { ...data, streamProxy: proxy };
+  };
 
   const state = usePlayerStore.getState();
   const configuredProxy = import.meta.env.VITE_INVIDIOUS_URL?.trim().replace(/\/+$/, '');
-  const proxy = (isNative() ? configuredProxy || state.proxy : state.proxy || configuredProxy) || instances[0];
+  const proxy = configuredProxy || state.proxy || instances[0];
 
   if (proxy) {
     try {
