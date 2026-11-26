@@ -1,6 +1,6 @@
 # M14U
 
-M14U is a personal project that shows how a music player comes together, from catalog search to web and Android playback. The website defaults to Open Audio and can switch to the unofficial JioSaavn catalog in Settings. Both use the same player and pages. The Android app uses YouTube search and native Media3 playback, with no catalog switch.
+M14U is a personal project that shows how a music player comes together, from catalog search to web and Android playback. The website defaults to the unofficial JioSaavn catalog and can switch to Open Audio in Settings. Both use the same player and pages. The Android app uses YouTube search and native Media3 playback, with no catalog switch.
 
 This repository contains the React app, Cloudflare catalog Worker, and the JioSaavn service deployed from [`render/`](render/).
 

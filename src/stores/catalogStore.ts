@@ -31,7 +31,7 @@ interface CatalogState {
 let dismissed = false;
 
 export const useCatalogStore = create<CatalogState>((set) => ({
-    provider: !isNative() && read(catalogKey) === 'jiosaavn' ? 'jiosaavn' : 'open-audio',
+    provider: isNative() ? 'open-audio' : read(catalogKey) === 'open-audio' ? 'open-audio' : 'jiosaavn',
     dialog: null,
     showIntro: () => {
         if (dismissed || useListeningPreferences.getState().setupComplete) return;

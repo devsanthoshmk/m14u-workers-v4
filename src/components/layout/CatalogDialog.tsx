@@ -9,14 +9,14 @@ import { Languages, Activity, Disc3, Check, X } from 'lucide-react';
 
 const catalogOptions = [
     {
-        value: 'open-audio',
-        label: 'Open Audio',
-        description: 'Freely licensed music from independent artists and open collections. This is the default.',
-    },
-    {
         value: 'jiosaavn',
         label: 'JioSaavn',
-        description: 'Search the JioSaavn catalog. This unofficial integration was built through reverse engineering and may stop working if JioSaavn changes its service.',
+        description: 'Search the JioSaavn catalog. This is the default. This unofficial integration was built through reverse engineering and may stop working if JioSaavn changes its service.',
+    },
+    {
+        value: 'open-audio',
+        label: 'Open Audio',
+        description: 'Freely licensed music from independent artists and open collections.',
     },
 ] as const;
 

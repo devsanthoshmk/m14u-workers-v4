@@ -128,12 +128,17 @@ const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
 const stream = { adaptiveFormats: [{ type: 'audio/webm', url: 'https://example.test/audio', bitrate: 1 }] };
 globalThis.resolveTestStream = async () => stream;
 
+test('web catalog defaults to jiosaavn when no saved preference exists', () => {
+    assert.equal(useCatalogStore.getState().provider, 'jiosaavn');
+});
+
 test('changing listening language replaces an in-flight search', async (t) => {
+    useCatalogStore.getState().choose('open-audio');
     const requests = [];
     t.mock.method(globalThis, 'fetch', (_url, { signal }) => new Promise(resolve => requests.push({ signal, resolve })));
     const { search, clearSearch } = useSearchStore.getState();
     const { setLanguage } = useListeningPreferences.getState();
-    t.after(() => { clearSearch(); setLanguage(''); });
+    t.after(() => { clearSearch(); setLanguage(''); useCatalogStore.getState().choose('jiosaavn'); });
     const previous = search('music');
     setLanguage('Tamil');
     assert.equal(requests[0].signal.aborted, true);
@@ -191,7 +196,8 @@ test('switching providers cancels the previous search and normalizes JioSaavn re
     const requests = [];
     t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
     const { choose } = useCatalogStore.getState();
-    t.after(() => { choose('open-audio'); });
+    choose('open-audio');
+    t.after(() => { choose('jiosaavn'); });
     const state = useSearchStore.getState;
     const previous = state().search('music');
     choose('jiosaavn');
@@ -274,6 +280,8 @@ test('catalog views keep saved JioSaavn and Open Audio tracks separate', () => {
 });
 
 test('search ignores late success and failure, including after Clear', async (t) => {
+    useCatalogStore.getState().choose('open-audio');
+    t.after(() => { useCatalogStore.getState().choose('jiosaavn'); });
     const requests = [];
     t.mock.method(globalThis, 'fetch', () => new Promise((resolve, reject) => requests.push({ resolve, reject })));
     const state = useSearchStore.getState;
@@ -294,6 +302,8 @@ test('search ignores late success and failure, including after Clear', async (t)
 });
 
 test('suggestions ignore stale failures and responses after Clear', async (t) => {
+    useCatalogStore.getState().choose('open-audio');
+    t.after(() => { useCatalogStore.getState().choose('jiosaavn'); });
     const requests = [];
     t.mock.method(globalThis, 'fetch', () => new Promise((resolve, reject) => requests.push({ resolve, reject })));
     const state = useSearchStore.getState;
@@ -312,8 +322,9 @@ test('suggestions ignore stale failures and responses after Clear', async (t) =>
 });
 
 test('console play uses only its own current search results across overlaps and Clear', async (t) => {
+    useCatalogStore.getState().choose('open-audio');
     globalThis.window = {};
-    t.after(() => { delete globalThis.window; });
+    t.after(() => { delete globalThis.window; useCatalogStore.getState().choose('jiosaavn'); });
     registerConsoleAPI();
     const api = window.m14u;
     const played = [];
@@ -347,8 +358,9 @@ for (const [command, payload, expected] of [
     ['suggest', ['latest suggestion'], ['latest suggestion']],
 ]) {
     test(`console ${command} returns only its own results across overlap and Clear`, async (t) => {
+        useCatalogStore.getState().choose('open-audio');
         globalThis.window = {};
-        t.after(() => { delete globalThis.window; });
+        t.after(() => { delete globalThis.window; useCatalogStore.getState().choose('jiosaavn'); });
         registerConsoleAPI();
         const api = window.m14u;
         const requests = [];
