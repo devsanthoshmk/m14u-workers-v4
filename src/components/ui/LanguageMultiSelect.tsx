@@ -7,6 +7,7 @@ export interface LanguageMultiSelectProps {
     ariaLabelledby?: string;
     selected: string[];
     onChange: (languages: string[]) => void;
+    compact?: boolean;
     className?: string;
 }
 
@@ -15,6 +16,7 @@ export function LanguageMultiSelect({
     ariaLabelledby,
     selected,
     onChange,
+    compact = false,
     className = '',
 }: LanguageMultiSelectProps) {
     const generatedId = useId();
@@ -32,18 +34,16 @@ export function LanguageMultiSelect({
 
     // Close on click outside
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+        const handleClickOutside = (event: PointerEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
         };
         if (isOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-            document.addEventListener('touchstart', handleClickOutside);
+            document.addEventListener('pointerdown', handleClickOutside);
         }
         return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('pointerdown', handleClickOutside);
         };
     }, [isOpen]);
 
@@ -65,7 +65,7 @@ export function LanguageMultiSelect({
     useEffect(() => {
         if (!isOpen) return;
         const timer = setTimeout(() => {
-            searchInputRef.current?.focus();
+            searchInputRef.current?.focus({ preventScroll: true });
         }, 30);
         return () => clearTimeout(timer);
     }, [isOpen]);
@@ -141,11 +141,21 @@ export function LanguageMultiSelect({
                 aria-labelledby={ariaLabelledby}
                 aria-label={!ariaLabelledby ? 'Listening languages' : undefined}
                 onClick={() => setIsOpen((prev) => !prev)}
-                className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-left text-sm text-foreground transition-colors hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary"
+                className={`flex w-full items-center justify-between gap-2 border bg-surface px-3 text-left text-sm text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                    isOpen ? 'rounded-t-xl border-border' : 'rounded-xl border-border hover:border-primary/50'
+                } ${
+                    compact ? 'h-10 py-1.5' : 'min-h-11 py-2'
+                }`}
             >
-                <div className="flex flex-1 flex-wrap items-center gap-1.5 overflow-hidden">
+                <div className={`flex flex-1 items-center gap-1.5 overflow-hidden ${compact ? 'min-w-0' : 'flex-wrap'}`}>
                     {selected.length === 0 ? (
-                        <span className="text-muted-foreground">All languages (no preference)</span>
+                        <span className="truncate text-muted-foreground">All languages (no preference)</span>
+                    ) : compact ? (
+                        <span className="truncate text-xs font-medium text-foreground sm:text-sm">
+                            {selectedLabels.length <= 2
+                                ? selectedLabels.join(', ')
+                                : `${selectedLabels.slice(0, 2).join(', ')} +${selectedLabels.length - 2}`}
+                        </span>
                     ) : (
                         selectedLabels.map((label) => (
                             <span
@@ -188,7 +198,7 @@ export function LanguageMultiSelect({
             {/* Dropdown Panel */}
             {isOpen && (
                 <div
-                    className="absolute left-0 top-full z-50 mt-1.5 w-full rounded-2xl border border-border bg-card p-2 text-foreground shadow-2xl animate-fade-in"
+                    className="absolute inset-x-0 top-full z-50 rounded-b-xl border border-t-0 border-border bg-surface p-2 text-foreground shadow-lg"
                 >
                     {/* Search Input */}
                     <div className="relative mb-2 px-1">
@@ -205,7 +215,7 @@ export function LanguageMultiSelect({
                             placeholder="Search languages…"
                             aria-label="Filter languages"
                             aria-controls={listboxId}
-                            className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary [&::-webkit-search-cancel-button]:hidden"
+                            className="h-9 w-full rounded-lg border border-border bg-card pl-8 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary [&::-webkit-search-cancel-button]:hidden"
                         />
                         {searchTerm && (
                             <button
@@ -258,7 +268,7 @@ export function LanguageMultiSelect({
                         role="listbox"
                         aria-multiselectable="true"
                         aria-label="Languages"
-                        className="max-h-52 overflow-y-auto pt-1 scrollbar-thin"
+                        className={`grid gap-1 ${compact ? 'max-h-40' : 'max-h-52'} overflow-y-auto pt-1 scrollbar-thin`}
                     >
                         {filteredOptions.length === 0 ? (
                             <div className="px-3 py-4 text-center text-xs text-muted-foreground">
@@ -276,12 +286,12 @@ export function LanguageMultiSelect({
                                         aria-selected={isChecked}
                                         tabIndex={isHighlighted ? 0 : -1}
                                         onKeyDown={(e) => handleOptionKeyDown(e, idx, value)}
-                                        className={`flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-primary ${
+                                        className={`flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-inset focus:ring-primary ${
                                             isChecked
                                                 ? 'bg-primary/10 text-primary font-semibold'
                                                 : isHighlighted
-                                                ? 'bg-surface text-foreground'
-                                                : 'text-foreground hover:bg-surface'
+                                                ? 'bg-surface-hover text-foreground'
+                                                : 'text-foreground hover:bg-surface-hover'
                                         }`}
                                     >
                                         <div className="flex items-center gap-2.5">

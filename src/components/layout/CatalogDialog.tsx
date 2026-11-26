@@ -5,19 +5,23 @@ import { LanguageMultiSelect } from '@/components/ui/LanguageMultiSelect';
 import { useUIStore } from '@/stores/uiStore';
 import { isNative } from '@/lib/utils/platform';
 import { getDiagnostics } from '@/services/homeDiscovery';
+import { Languages, Activity, Disc3, X, ChevronDown } from 'lucide-react';
 import { MobileAppPromo } from '@/components/MobileAppPromo';
-import { Languages, Activity, Disc3, Check, X } from 'lucide-react';
+
+const LANGUAGE_PICKER_ID = 'listening-languages-select';
 
 const catalogOptions = [
     {
         value: 'jiosaavn',
         label: 'JioSaavn',
-        description: 'Search the JioSaavn catalog. This is the default. This unofficial integration was built through reverse engineering and may stop working if JioSaavn changes its service.',
+        badge: 'Default',
+        description: 'Mainstream library · Unofficial, streams may break.',
     },
     {
         value: 'open-audio',
         label: 'Open Audio',
-        description: 'Freely licensed music from independent artists and open collections.',
+        badge: null,
+        description: 'Freely licensed indie tracks · Reliable playback, small library.',
     },
 ] as const;
 
@@ -33,7 +37,7 @@ export function CatalogDialog() {
     const setOnboardingDone = useUIStore(s => s.setOnboardingDone);
 
     const ref = useRef<HTMLDialogElement>(null);
-    const pointerStartedInsideRef = useRef(false);
+    const ignoreBackdropClickRef = useRef(false);
     const native = isNative();
     const diagnostics = getDiagnostics(provider);
 
@@ -59,11 +63,15 @@ export function CatalogDialog() {
             event.clientY >= rect.top &&
             event.clientY <= rect.bottom;
 
-        pointerStartedInsideRef.current = event.target !== dialogElement || isInside;
+        // Remember if this press is dismissing the picker before the click arrives.
+        const pickerWasOpen = dialogElement.querySelector(
+            `#${LANGUAGE_PICKER_ID}[aria-expanded="true"]`
+        ) !== null;
+        ignoreBackdropClickRef.current = event.target !== dialogElement || isInside || pickerWasOpen;
     };
 
     const handlePointerCancel = () => {
-        pointerStartedInsideRef.current = false;
+        ignoreBackdropClickRef.current = false;
     };
 
     const handleClick = (event: React.MouseEvent<HTMLDialogElement>) => {
@@ -76,10 +84,10 @@ export function CatalogDialog() {
             event.clientY < rect.top ||
             event.clientY > rect.bottom;
 
-        if (event.target === dialogElement && isOutside && !pointerStartedInsideRef.current) {
+        if (event.target === dialogElement && isOutside && !ignoreBackdropClickRef.current) {
             close();
         }
-        pointerStartedInsideRef.current = false;
+        ignoreBackdropClickRef.current = false;
     };
 
     return (
@@ -89,18 +97,18 @@ export function CatalogDialog() {
                 event.preventDefault();
                 close();
             }}
-            onPointerDown={handlePointerDown}
+            onPointerDownCapture={handlePointerDown}
             onPointerCancel={handlePointerCancel}
             onClick={handleClick}
             aria-labelledby="catalog-dialog-title"
-            className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 sm:p-6 text-foreground shadow-2xl backdrop:bg-black/65"
+            className="mx-auto mt-4 mb-auto sm:mt-[min(12dvh,5rem)] max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-6rem)] w-[calc(100%-1.5rem)] max-w-lg overflow-y-auto [scrollbar-gutter:stable_both-edges] rounded-2xl border border-border bg-card p-3.5 sm:p-5 text-foreground shadow-2xl backdrop:bg-black/65"
         >
-            <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                <h2 id="catalog-dialog-title" className="font-heading text-xl font-bold flex items-center gap-2">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+                <h2 id="catalog-dialog-title" className="font-heading text-lg sm:text-xl font-bold flex items-center gap-2">
                     {dialog === 'intro' ? 'Welcome to M14U' : 'Settings'}
                 </h2>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full border border-border/70 bg-surface/60 text-muted-foreground font-medium">
                         {native ? 'Android App' : 'Web Player'}
                     </span>
                     <button
@@ -115,47 +123,47 @@ export function CatalogDialog() {
                 </div>
             </div>
 
-            {dialog === 'intro' ? (
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                    Set up your listening preferences. You can always adjust these later from the Settings menu.
-                </p>
-            ) : null}
-
-            {/* Language Preferences */}
-            <section className="mt-5 space-y-2">
-                <label htmlFor="listening-languages-select" className="flex items-center gap-2 text-sm font-semibold">
-                    <Languages className="size-4 text-primary" />
-                    Listening languages
-                </label>
-                <p className="text-xs text-muted-foreground">
-                    Boosts matching songs within search results and personalized picks without altering exact matches.
-                </p>
-                <div className="mt-1">
-                    <LanguageMultiSelect
-                        id="listening-languages-select"
-                        selected={languages}
-                        onChange={setLanguages}
-                    />
+            {/* Listening Languages Dropdown */}
+            <section className="mt-3.5 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                    <label htmlFor={LANGUAGE_PICKER_ID} className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold">
+                        <Languages className="size-3.5 sm:size-4 text-muted-foreground" />
+                        Listening languages
+                    </label>
+                    <span className="text-[11px] text-muted-foreground">Boosts matching songs</span>
                 </div>
+                <LanguageMultiSelect
+                    id={LANGUAGE_PICKER_ID}
+                    selected={languages}
+                    onChange={setLanguages}
+                    compact
+                />
             </section>
 
             {/* Catalog Preferences */}
-            <section className="mt-6 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Disc3 className="size-4 text-primary" />
-                    Music catalog
+            <section className="mt-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold">
+                        <Disc3 className="size-3.5 sm:size-4 text-muted-foreground" />
+                        Music catalog
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                        {dialog === 'intro' ? 'Default: JioSaavn' : 'Keeps active queue'}
+                    </span>
                 </div>
 
                 {!native ? (
                     <fieldset className="space-y-2">
                         <legend className="sr-only">Choose music catalog</legend>
-                        {catalogOptions.map(({ value, label, description }) => {
+                        {catalogOptions.map(({ value, label, badge, description }) => {
                             const isSelected = provider === value;
                             return (
                                 <label
                                     key={value}
-                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors ${
-                                        isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface/40 hover:bg-surface'
+                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
+                                        isSelected
+                                            ? 'border-primary/70 bg-primary/[0.06]'
+                                            : 'border-border/70 bg-surface/30 hover:bg-surface/60'
                                     }`}
                                 >
                                     <input
@@ -164,18 +172,28 @@ export function CatalogDialog() {
                                         value={value}
                                         checked={isSelected}
                                         onChange={() => choose(value)}
-                                        className="mt-1 accent-primary"
+                                        className="sr-only"
                                     />
-                                    <div className="flex-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-semibold text-foreground">{label}</span>
-                                            {isSelected && (
-                                                <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
-                                                    <Check className="size-3" /> Active
+                                    <span
+                                        aria-hidden="true"
+                                        className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/15'
+                                                : 'border-muted-foreground/40 bg-transparent'
+                                        }`}
+                                    >
+                                        {isSelected && <span className="size-2 rounded-full bg-primary" />}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs sm:text-sm font-semibold text-foreground">{label}</span>
+                                            {badge && (
+                                                <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-surface text-muted-foreground">
+                                                    {badge}
                                                 </span>
                                             )}
                                         </div>
-                                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                                        <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
                                             {description}
                                         </span>
                                     </div>
@@ -184,17 +202,11 @@ export function CatalogDialog() {
                         })}
                     </fieldset>
                 ) : (
-                    <div className="rounded-xl border border-border bg-surface/50 p-3.5 text-xs text-muted-foreground leading-relaxed">
-                        <span className="font-semibold text-foreground block mb-1">YouTube Music (Native)</span>
+                    <div className="rounded-xl border border-border bg-surface/50 p-3 text-xs text-muted-foreground leading-relaxed">
+                        <span className="font-semibold text-foreground block mb-0.5">YouTube Music (Native)</span>
                         Android connects directly to YouTube Music with native stream extraction and Media3 audio playback.
                     </div>
                 )}
-
-                <p className="text-xs text-muted-foreground">
-                    {dialog === 'intro'
-                        ? 'First-run setup retains your initial selections without losing saved tracks.'
-                        : 'Home and Favorites show the selected catalog. Active playback and queue remain intact.'}
-                </p>
             </section>
 
             {/* Mobile App Promotion — secondary below the settings controls */}
@@ -209,34 +221,37 @@ export function CatalogDialog() {
                 </div>
             )}
 
-            {/* Diagnostics (shown in Settings dialog) */}
+            {/* Collapsible Diagnostics (shown in Settings dialog without forcing scroll) */}
             {dialog === 'settings' && (
-                <section className="mt-6 border-t border-border/60 pt-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                        <Activity className="size-4 text-primary" />
-                        Source & Resolver Diagnostics
-                    </div>
+                <details className="group mt-3 rounded-xl border border-border/70 bg-surface/30">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
+                        <span className="flex items-center gap-1.5">
+                            <Activity className="size-3.5 text-muted-foreground" />
+                            Source & Resolver Diagnostics
+                        </span>
+                        <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
 
-                    <div className="rounded-xl border border-border bg-surface/30 p-3 space-y-2.5 text-xs">
-                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-2">
+                    <div className="border-t border-border/50 px-3 py-2.5 space-y-2 text-[11px]">
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-1.5">
                             <span className="text-muted-foreground sm:shrink-0">Platform</span>
                             <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-words [overflow-wrap:anywhere]">{diagnostics.platform}</span>
                         </div>
-                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-2">
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-1.5">
                             <span className="text-muted-foreground sm:shrink-0">Catalog source</span>
                             <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-all [overflow-wrap:anywhere]">{diagnostics.catalogSourceUrl}</span>
                         </div>
-                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-2">
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-1.5">
                             <span className="text-muted-foreground sm:shrink-0">Primary stream resolver</span>
                             <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-words [overflow-wrap:anywhere]">{diagnostics.streamPrimary}</span>
                         </div>
                         {native && (
-                            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-2">
+                            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-1.5">
                                 <span className="text-muted-foreground sm:shrink-0">Live resolver</span>
                                 <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-words [overflow-wrap:anywhere]">{diagnostics.liveResolverStatus}</span>
                             </div>
                         )}
-                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-2">
+                        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-b border-white/[0.04] pb-1.5">
                             <span className="text-muted-foreground sm:shrink-0">Fallback proxy</span>
                             <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-all [overflow-wrap:anywhere]" title={diagnostics.invidiousProxy}>
                                 {diagnostics.invidiousProxy}
@@ -247,14 +262,14 @@ export function CatalogDialog() {
                             <span className="min-w-0 font-mono text-foreground text-left sm:text-right break-words [overflow-wrap:anywhere]">{diagnostics.audioEngine}</span>
                         </div>
                     </div>
-                </section>
+                </details>
             )}
 
-            <div className="mt-6 flex justify-end gap-3 pt-2">
+            <div className="mt-3.5 flex justify-end">
                 <button
                     type="button"
                     onClick={dialog === 'intro' ? handleContinue : close}
-                    className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="h-10 w-full sm:w-auto rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
                 >
                     {dialog === 'intro' ? 'Continue to M14U' : 'Done'}
                 </button>
