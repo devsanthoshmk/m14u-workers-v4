@@ -416,6 +416,24 @@ test('Open Audio selection plays first, appends unique recommendations, and igno
     assert.deepEqual(player().queue, []);
 });
 
+test('JioSaavn catalog queues collapse compilation copies without replacing the selected release', async () => {
+    globalThis.resolveTestStream = async () => stream;
+    const attention = { ...tracks[0], id: 'jiosaavn:attention', title: 'Attention', author: 'Charlie Puth' };
+    const duplicateSeed = { ...attention, id: 'jiosaavn:attention-copy' };
+    const floor = { ...tracks[1], id: 'jiosaavn:floor', title: 'On The Floor', author: 'Jennifer Lopez, Pitbull' };
+    const copies = Array.from({ length: 22 }, (_, i) => ({ ...floor, id: `jiosaavn:compilation-${i}`, author: 'Pitbull, Jennifer Lopez' }));
+    const list = [duplicateSeed, attention, floor, ...copies];
+    await player().setQueue(list, 1);
+    assert.equal(player().currentSong.id, attention.id);
+    assert.equal(player().queueIndex, 0);
+    assert.deepEqual(player().queue.map(row => row.song.id), [attention.id, floor.id]);
+
+    await player().setQueue(list, 0, true);
+    assert.deepEqual(player().originalQueue.map(row => row.song.id), [duplicateSeed.id, floor.id]);
+    assert.equal(player().queue.length, 2);
+    player().clearQueue();
+});
+
 test('JioSaavn refills only near the queue end and cancels on Clear', async t => {
     const { startSaavnQueue } = await server.ssrLoadModule('/src/services/saavnQueue.ts');
     useCatalogStore.getState().choose('jiosaavn');

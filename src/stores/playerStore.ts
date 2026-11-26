@@ -15,7 +15,9 @@ import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
-import { isAndroid } from '@/lib/utils/platform';
+import { isAndroid, isNative } from '@/lib/utils/platform';
+import { songIdentityKeys } from '@/lib/utils/songIdentity';
+import { isJioSaavnTrack } from '@/services/jiosaavn';
 import NativePlayback, { type NativePlaybackState } from '@/plugins/NativePlayback';
 import { trackArtworkUrls } from '@/utils/trackArtwork';
 
@@ -733,11 +735,28 @@ export const usePlayerStore = create<PlayerStore>()(
                 setQueue: async (songs: TrackItem[], startIndex = 0, shuffled = false) => {
                     if (!songs.length) return get().clearQueue();
                     const items = songs.map(createQueueItem);
-                    const queue = shuffled ? shuffleArray(items) : items;
-                    const queueIndex = shuffled || !queue[startIndex] ? 0 : startIndex;
+                    const selected = shuffled ? undefined : items[startIndex] ?? items[0];
+                    const seen = new Set<string>();
+                    const seenIds = new Set<string>();
+                    const keep = ({ song }: QueueItem) => {
+                        if (!isJioSaavnTrack(song.id)) return true;
+                        const keys = songIdentityKeys(song.title, song.author);
+                        if (seenIds.has(song.id) || keys.some(key => seen.has(key))) return false;
+                        seenIds.add(song.id);
+                        keys.forEach(key => seen.add(key));
+                        return true;
+                    };
+                    // Reserve the tapped release before scanning the list so an earlier compilation copy cannot replace it.
+                    let unique = items;
+                    if (!isNative()) {
+                        if (selected) keep(selected);
+                        unique = items.filter(item => item === selected || keep(item));
+                    }
+                    const queue = shuffled ? shuffleArray(unique) : unique;
+                    const queueIndex = selected ? queue.indexOf(selected) : 0;
                     set({
                         queue,
-                        originalQueue: items,
+                        originalQueue: unique,
                         queueIndex,
                         isShuffled: shuffled,
                     });
