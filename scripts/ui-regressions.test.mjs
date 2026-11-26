@@ -442,9 +442,13 @@ test('JioSaavn refills only near the queue end and cancels on Clear', async t =>
     const requests = [];
     t.mock.method(globalThis, 'fetch', (url, { signal }) => new Promise(resolve => requests.push({ url, signal, resolve })));
     const initial = startSaavnQueue(make(0));
-    requests[0].resolve(Response.json(Array.from({ length: 8 }, (_, i) => make(i + 1))));
+    requests[0].resolve(Response.json([
+        { ...make(0), id: 'jiosaavn:seed-copy' },
+        make(1), { ...make(1), id: 'jiosaavn:compilation-copy' },
+        ...Array.from({ length: 7 }, (_, i) => make(i + 2)),
+    ]));
     await initial;
-    assert.equal(player().queue.length, 9);
+    assert.deepEqual(player().queue.map(row => row.song.id), Array.from({ length: 9 }, (_, i) => make(i).id));
     await player().playFromQueue(4);
     assert.equal(requests.length, 1);
     await player().playFromQueue(5);
