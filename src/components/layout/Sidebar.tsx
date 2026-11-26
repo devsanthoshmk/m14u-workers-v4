@@ -7,6 +7,7 @@
 import { NavLink } from 'react-router-dom';
 import { Home, Search, Heart, ListMusic, Settings } from 'lucide-react';
 import { BrandLogo } from '@/components/BrandLogo';
+import { MobileAppPromo } from '@/components/MobileAppPromo';
 import { cn } from '@/lib/utils';
 import { useCatalogStore } from '@/stores/catalogStore';
 
@@ -63,6 +64,9 @@ export function Sidebar() {
 
             {/* ─── Spacer + branding ─── */}
             <div className="flex-1" />
+            <div className="px-3 pb-2">
+                <MobileAppPromo variant="sidebar" title="M14U Mobile App" />
+            </div>
             <div className="px-5 py-4 text-[10px] text-muted-foreground/40">
                 M14U · {new Date().getFullYear()}
             </div>

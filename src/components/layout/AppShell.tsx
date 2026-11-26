@@ -12,7 +12,9 @@ import { Sidebar } from './Sidebar';
 import { ResizeHandle } from './ResizeHandle';
 import { MobileNav } from './MobileNav';
 import { CatalogDialog } from './CatalogDialog';
+import { MobileAppPromo } from '@/components/MobileAppPromo';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { isNative } from '@/lib/utils/platform';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { QueuePanel } from '@/components/queue/QueuePanel';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
@@ -116,7 +118,19 @@ export function AppShell() {
             <CatalogDialog />
 
             <div className="flex h-dvh w-full flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
-                <div className="flex flex-1 overflow-hidden">
+                {!isNative() && (
+                    <div className="shrink-0 z-20">
+                        <MobileAppPromo
+                            variant="strip"
+                            dismissible
+                            oncePerDay
+                            autoHideMs={90_000}
+                            dailyKey="m14u-mobile-strip-promo"
+                            ctaLabel="Get App"
+                        />
+                    </div>
+                )}
+                <div className="flex flex-1 min-h-0 overflow-hidden">
                     {/* Desktop sidebar */}
                     <div
                         style={{ width: effectiveSidebarWidth }}

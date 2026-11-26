@@ -5,6 +5,7 @@ import { LanguageMultiSelect } from '@/components/ui/LanguageMultiSelect';
 import { useUIStore } from '@/stores/uiStore';
 import { isNative } from '@/lib/utils/platform';
 import { getDiagnostics } from '@/services/homeDiscovery';
+import { MobileAppPromo } from '@/components/MobileAppPromo';
 import { Languages, Activity, Disc3, Check, X } from 'lucide-react';
 
 const catalogOptions = [
@@ -195,6 +196,18 @@ export function CatalogDialog() {
                         : 'Home and Favorites show the selected catalog. Active playback and queue remain intact.'}
                 </p>
             </section>
+
+            {/* Mobile App Promotion — secondary below the settings controls */}
+            {!native && (
+                <div className="mt-3.5">
+                    <MobileAppPromo
+                        variant="compact"
+                        ctaLabel="Get App"
+                        title="No catalog limits on the M14U Mobile App"
+                        description="Uses YouTube Music directly — skip limited libraries & broken web streams."
+                    />
+                </div>
+            )}
 
             {/* Diagnostics (shown in Settings dialog) */}
             {dialog === 'settings' && (

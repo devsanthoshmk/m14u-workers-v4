@@ -13,6 +13,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import type { TrackItem } from '@/types/music';
 import { useSlowLoading } from '@/hooks/useSlowLoading';
 import { playCatalogSelection } from '@/services/catalogPlayback';
+import { MobileAppPromo } from '@/components/MobileAppPromo';
 
 const SUGGESTIONS = ['Lofi', 'Jazz', 'Ambient', 'Piano'];
 
@@ -283,6 +284,13 @@ export function SearchPage() {
                                 Try again
                             </button>
                         )}
+                        <MobileAppPromo
+                            className="mt-4"
+                            title={failed ? 'Skip web search errors with the Mobile App' : 'Didn’t find what you wanted?'}
+                            description={failed
+                                ? 'If you were using the M14U mobile app, you wouldn’t get search or service errors like this — the mobile app uses YouTube Music.'
+                                : 'If you were using the M14U mobile app, you wouldn’t run into missing tracks or catalog limits — the mobile app uses YouTube Music.'}
+                        />
                     </div>
                 )}
 
@@ -301,6 +309,11 @@ export function SearchPage() {
                                     : 'Try these similar songs on JioSaavn.')
                                 : 'No matching alternatives found.'}
                         </p>
+                        <MobileAppPromo
+                            className="mt-4"
+                            title="Play this exact song on the M14U Mobile App"
+                            description="If you were using the mobile app, you wouldn’t get missing-match issues like this because the mobile app uses YouTube Music directly."
+                        />
                         {songDiscovery.alternatives.length > 0 && (
                             <div className="mt-4">
                                 <h3 id="alternatives-heading" className="mb-2 font-heading text-sm font-bold text-foreground">
@@ -352,6 +365,12 @@ export function SearchPage() {
                                 ))}
                             </div>
                         )}
+                        <MobileAppPromo
+                            className="mt-6 max-w-2xl"
+                            dismissible
+                            title="Didn’t find the exact song you wanted?"
+                            description="If you were using the M14U mobile app, you wouldn’t run into limited or unreliable web results — the mobile app uses YouTube Music directly."
+                        />
                     </section>
                 )}
             </div>

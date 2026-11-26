@@ -14,6 +14,7 @@ import {
     Globe,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/BrandLogo';
+import { MobileAppPromo } from '@/components/MobileAppPromo';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -551,6 +552,11 @@ export function HomePage() {
                                         Switch to Open Audio
                                     </button>
                                 </div>
+                                <MobileAppPromo
+                                    className="mt-4 max-w-lg mx-auto text-left"
+                                    title="Avoid warm-up and catalog errors on Mobile"
+                                    description="If you use the M14U mobile app, you won’t get any of these service errors — the mobile app uses YouTube Music directly."
+                                />
                             </div>
                         ) : globalTopTracks.length > 0 ? (
                             <div className="grid gap-3 sm:gap-4">
@@ -684,17 +690,23 @@ function TwoRowArtworkShelf({
                     ))}
                 </div>
             ) : error ? (
-                <div className="rounded-xl border border-border bg-surface/40 p-4 text-xs text-muted-foreground flex items-center justify-between gap-3">
-                    <span>Could not load {label} picks.</span>
-                    {onRetry && (
-                        <button
-                            type="button"
-                            onClick={onRetry}
-                            className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-hover border border-border text-foreground font-medium"
-                        >
-                            Retry
-                        </button>
-                    )}
+                <div className="rounded-xl border border-border bg-surface/40 p-4 text-xs text-muted-foreground space-y-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                        <span>Could not load {label} picks.</span>
+                        {onRetry && (
+                            <button
+                                type="button"
+                                onClick={onRetry}
+                                className="px-3 py-1 rounded-lg bg-surface hover:bg-surface-hover border border-border text-foreground font-medium shrink-0"
+                            >
+                                Retry
+                            </button>
+                        )}
+                    </div>
+                    <MobileAppPromo
+                        variant="inline"
+                        description="If you were using the M14U mobile app, you wouldn’t get catalog errors like this because it uses YouTube Music."
+                    />
                 </div>
             ) : tracks.length > 0 ? (
                 <div
