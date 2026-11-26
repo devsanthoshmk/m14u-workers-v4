@@ -14,11 +14,16 @@ export function trackArtworkUrls(track: TrackItem): string[] {
     const supplied = [track.img, ...thumbnails.map(image => image.url)]
         .filter((url): url is string => typeof url === 'string' && url.startsWith('https://'));
     const covers = supplied.flatMap(url => {
-        const cover = url.replace(
+        const googleCover = url.replace(
             /^(https:\/\/(?:[^/]+\.)?(?:googleusercontent\.com|ggpht\.com)\/[^?]+)=w\d+-h\d+[^?]*$/,
             '$1=w800-h800',
         );
-        return cover === url ? [] : [cover];
+        if (googleCover !== url) return [googleCover];
+        const saavnCover = url.replace(
+            /^(https:\/\/(?:[^/]+\.)?saavncdn\.com\/[^?#]+?)([_-])\d+x\d+(\.[a-zA-Z0-9]+(?:\?.*)?)$/,
+            '$1$2500x500$3',
+        );
+        return saavnCover === url ? [] : [saavnCover];
     });
     const id = track.videoId || track.id;
     const youtube = /^[\w-]{11}$/.test(id) ? `https://i.ytimg.com/vi/${id}` : '';

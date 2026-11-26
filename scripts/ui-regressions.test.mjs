@@ -122,6 +122,12 @@ test('media artwork prefers a full-size cover and keeps fallbacks', () => {
     ]);
     assert.equal(urls.at(-1), img);
     assert.equal(urls.filter(url => url === img).length, 1);
+
+    const saavnImg = 'https://c.saavncdn.com/343/Voicenotes-English-2018-20190607043050-150x150.jpg';
+    assert.deepEqual(trackArtworkUrls({ id: 'jiosaavn:PX3J3pID', img: saavnImg }), [
+        'https://c.saavncdn.com/343/Voicenotes-English-2018-20190607043050-500x500.jpg',
+        saavnImg,
+    ]);
 });
 const player = usePlayerStore.getState;
 const tracks = ['A', 'B', 'C'].map(id => ({ id, title: id, type: 'song' }));
