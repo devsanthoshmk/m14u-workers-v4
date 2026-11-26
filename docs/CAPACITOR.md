@@ -1,8 +1,8 @@
 # M14U on Android
 
-Capacitor loads the same React UI as the browser from bundled assets. [`capacitor.config.ts`](../capacitor.config.ts) sets `webDir: 'dist'`; there is no active remote `server.url`. Publishing the web site does not update an installed APK.
+Capacitor loads the live web UI directly from Cloudflare Pages. [`capacitor.config.ts`](../capacitor.config.ts) sets `server.url` to `https://m14u.pages.dev` (`cleartext: false`, `webDir: 'dist'` kept for Capacitor sync). Publishing web changes to `https://m14u.pages.dev` updates the UI on the next app load without rebuilding the APK.
 
-Android does not use the website's catalog switch, welcome dialog, or Render API. The bundled app sends `catalog=youtube` for search and suggestions to the configured Cloudflare catalog Worker; stream extraction and playback use the native path below.
+Android does not use the website's catalog switch, welcome dialog, or Render API. Because Capacitor injects the native bridge into the remote `server.url` origin, `isNative()` remains true and the app sends `catalog=youtube` for search and suggestions to the configured Cloudflare catalog Worker; stream extraction and playback use the native path below.
 
 ## Native bridge
 
