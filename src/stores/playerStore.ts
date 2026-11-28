@@ -15,11 +15,22 @@ import { config } from '@/lib/utils/config';
 import { STORAGE_KEYS, LIMITS } from '@/utils/constants';
 import { generateId, shuffleArray } from '@/utils/format';
 import getStreamData, { prefetchNextSong } from '@/lib/modules/getStreamData';
-import { isAndroid, isNative } from '@/lib/utils/platform';
+import { getCachedNativeCapabilities, getNativeCapabilities, isAndroid, isNative } from '@/lib/utils/platform';
 import { songIdentityKeys } from '@/lib/utils/songIdentity';
 import { isJioSaavnTrack } from '@/services/jiosaavn';
-import NativePlayback, { type NativePlaybackState } from '@/plugins/NativePlayback';
+import { useSaavnFallbackStore, type ResolvedTrackFallback } from '@/services/saavnFallback';
+import NativePlayback, {
+    type NativeCapabilities,
+    type NativePlaybackState,
+    type NativeQueueItem,
+    type NativeTrackSource,
+} from '@/plugins/NativePlayback';
 import { trackArtworkUrls } from '@/utils/trackArtwork';
+import {
+    buildResolverKey,
+    computeSourceExpiryMs,
+    createLookaheadManager,
+} from '@/lib/modules/resolver/lookahead';
 
 interface QueueItem {
     queueId: string;
@@ -138,21 +149,167 @@ function createQueueItem(song: TrackItem): QueueItem {
 
 const androidPlayback = isAndroid();
 const nativeRepeat = { off: 0, one: 1, all: 2 };
-const nativeQueue = (queue: QueueItem[], selectedId?: string, url?: string) => queue.map(({ queueId, song }) => ({
-    queueId, id: song.id, title: song.name || song.title, artist: song.artist?.name || song.author,
-    artwork: trackArtworkUrls(song), url: queueId === selectedId ? url : undefined,
-    proxy: import.meta.env.VITE_INVIDIOUS_URL?.trim() || usePlayerStore.getState().proxy || 'https://yt.omada.cafe',
-}));
+const OPEN_AUDIO_PREFIX_RE = /^(archive|commons|audius|openverse|freetouse):/;
+const isEligibleYouTubeTrackId = (id: string | undefined) =>
+    Boolean(id && !isJioSaavnTrack(id) && !OPEN_AUDIO_PREFIX_RE.test(id));
+const defaultNativeProxy = () =>
+    import.meta.env.VITE_INVIDIOUS_URL?.trim() || usePlayerStore.getState().proxy || 'https://yt.omada.cafe';
+
+const fallbackAttemptedQueueIds = new Set<string>();
+const activeFailoverMatches = new Map<string, ResolvedTrackFallback>();
+const startedQueueIds = new Set<string>();
+
+function clearFailoverTracking() {
+    fallbackAttemptedQueueIds.clear();
+    activeFailoverMatches.clear();
+    startedQueueIds.clear();
+}
+
+function getActiveFailoverMatch(queueId: string): ResolvedTrackFallback | undefined {
+    if (!useSaavnFallbackStore.getState().enabled) return undefined;
+    return activeFailoverMatches.get(queueId);
+}
+
+function buildNativeQueue(
+    queue: QueueItem[],
+    capabilities: NativeCapabilities,
+    active?: { queueId: string; legacyUrl: string; source?: NativeTrackSource },
+): NativeQueueItem[] {
+    const proxy = defaultNativeProxy();
+    const isV2 = capabilities.abiVersion >= 2;
+    return queue.map(({ queueId, song }) => {
+        const isActive = queueId === active?.queueId;
+        const failoverMatch = getActiveFailoverMatch(queueId);
+        const effectiveTrackId = failoverMatch?.matchedTrack.id ?? song.id;
+        const resolverKey = isV2 ? buildResolverKey(effectiveTrackId) : undefined;
+        return {
+            queueId,
+            id: song.id,
+            title: song.name || song.title,
+            artist: song.artist?.name || song.author,
+            artwork: trackArtworkUrls(song),
+            url: isActive ? active.legacyUrl : undefined,
+            proxy,
+            ...(isV2 && resolverKey ? { resolverKey } : {}),
+            ...(isV2 && isActive && active?.source ? { source: active.source } : {}),
+        };
+    });
+}
+
+let queueGeneration = 0;
+let fallbackDisableRevision = 0;
 let nativeLoading = false;
 let nativeLoaded = false;
 let nativeInitialized = false;
+let nativeCleared = false;
+let pendingTransportTarget: boolean | null = null;
+let transportSyncSeq = 0;
 let nativeListening = { id: '', time: 0, total: 0, playing: false };
+let nativeMutationChain: Promise<void> = Promise.resolve();
+let onNativeRowFailover:
+    | ((queueId: string, queueIndex: number, song: TrackItem, expectedGeneration: number, errorMessage: string) => void)
+    | null = null;
 
-function applyNativeState(snapshot: NativePlaybackState) {
-    if (nativeLoading || !snapshot.queueId) return;
+function enqueueNativeMutation<T>(task: () => Promise<T>): Promise<T> {
+    const run = nativeMutationChain.then(task, task);
+    nativeMutationChain = run.then(() => undefined, () => undefined);
+    return run;
+}
+
+const lookahead = createLookaheadManager({
+    getState: () => {
+        const s = usePlayerStore.getState();
+        return {
+            queue: s.queue,
+            queueIndex: s.queueIndex,
+            repeatMode: s.repeatMode,
+            generation: queueGeneration,
+            isActive: androidPlayback && nativeLoaded && !nativeLoading,
+        };
+    },
+    resolveStream: getStreamData,
+    selectStream: preferredStream,
+    proxyUrl: proxyHandler,
+    getQuality: () => config.quality,
+    resolveRowTrackId: (row) => getActiveFailoverMatch(row.queueId)?.matchedTrack.id ?? row.song.id,
+    pushResolvedSources: (generation, entries) =>
+        enqueueNativeMutation(async () => {
+            if (generation !== queueGeneration || !nativeLoaded || nativeLoading) {
+                return null;
+            }
+            return NativePlayback.setResolvedSources({ generation, entries });
+        }),
+});
+
+function scheduleLookahead() {
+    if (!androidPlayback || !nativeLoaded || nativeLoading) return;
+    const gen = queueGeneration;
+    const caps = getCachedNativeCapabilities();
+    if (caps) {
+        if (caps.sourceRefresh) void lookahead.prime();
+        return;
+    }
+    void getNativeCapabilities().then((resolved) => {
+        if (resolved.sourceRefresh && gen === queueGeneration && nativeLoaded && !nativeLoading) {
+            void lookahead.prime();
+        }
+    });
+}
+
+function applyNativeState(snapshot: NativePlaybackState, deferLookahead = false): boolean {
+    if (nativeLoading || !snapshot.queueId) return false;
+    const snapGen =
+        typeof snapshot.generation === 'number' && Number.isFinite(snapshot.generation)
+            ? snapshot.generation
+            : 0;
     const state = usePlayerStore.getState();
     const queueIndex = state.queue.findIndex(row => row.queueId === snapshot.queueId);
-    if (queueIndex < 0) return;
+    if (queueIndex < 0) return false;
+
+    if (snapGen > 0) {
+        if (queueGeneration === 0 && !nativeCleared) {
+            queueGeneration = snapGen;
+        } else if (snapGen !== queueGeneration) {
+            return false;
+        }
+    }
+
+    const previousQueueId = state.queue[state.queueIndex]?.queueId;
+    const shouldPrimeLookahead = !nativeLoaded || previousQueueId !== snapshot.queueId;
+    if (!snapshot.error && snapshot.position > 0) {
+        startedQueueIds.add(snapshot.queueId);
+    }
+
+    if (
+        androidPlayback &&
+        snapshot.error &&
+        !snapshot.playing &&
+        snapshot.position === 0 &&
+        !startedQueueIds.has(snapshot.queueId) &&
+        !fallbackAttemptedQueueIds.has(snapshot.queueId) &&
+        !getActiveFailoverMatch(snapshot.queueId) &&
+        isEligibleYouTubeTrackId(state.queue[queueIndex].song.id) &&
+        onNativeRowFailover
+    ) {
+        const fallbackStore = useSaavnFallbackStore.getState();
+        if (fallbackStore.enabled) {
+            fallbackAttemptedQueueIds.add(snapshot.queueId);
+            onNativeRowFailover(
+                snapshot.queueId,
+                queueIndex,
+                state.queue[queueIndex].song,
+                queueGeneration,
+                snapshot.error,
+            );
+            return false;
+        }
+        fallbackAttemptedQueueIds.add(snapshot.queueId);
+        fallbackStore.recordYouTubeFailure({
+            trackId: state.queue[queueIndex].song.id,
+            error: snapshot.error,
+        });
+    }
+
     nativeLoaded = true;
     const currentSong = state.queue[queueIndex].song;
     if (nativeListening.id !== snapshot.queueId) {
@@ -165,12 +322,18 @@ function applyNativeState(snapshot: NativePlaybackState) {
     }
     nativeListening.time = snapshot.position;
     nativeListening.playing = snapshot.playing;
+    const effectivePlaying = pendingTransportTarget !== null ? pendingTransportTarget : snapshot.playing;
+    const effectiveBuffering = pendingTransportTarget === false ? false : snapshot.buffering;
     usePlayerStore.setState({
         queueIndex, currentSong, currentTime: Math.floor(snapshot.position), duration: Math.floor(snapshot.duration),
-        isPlaying: snapshot.playing, isBuffering: snapshot.buffering, error: snapshot.error || null,
-        status: snapshot.buffering ? 'Buffering...' : '',
+        isPlaying: effectivePlaying, isBuffering: effectiveBuffering, error: snapshot.error || null,
+        status: effectiveBuffering ? 'Buffering...' : '',
         ...(snapshot.sleepEnded && state.sleepTimer.preset === 'end_of_song' ? { sleepTimer: idleTimer } : {}),
     });
+    if (shouldPrimeLookahead && !snapshot.error && !deferLookahead) {
+        scheduleLookahead();
+    }
+    return true;
 }
 
 function reportNativeError(error: unknown) {
@@ -180,9 +343,23 @@ function reportNativeError(error: unknown) {
 
 async function nativeControl(action: string, value?: number) {
     try {
-        await NativePlayback.control({ action, value });
+        await enqueueNativeMutation(() => NativePlayback.control({ action, value }));
     } catch (error) {
         reportNativeError(error);
+    }
+}
+
+async function syncNativeTransport(targetPlaying: boolean) {
+    const seq = ++transportSyncSeq;
+    pendingTransportTarget = targetPlaying;
+    try {
+        await enqueueNativeMutation(() => NativePlayback.control({ action: targetPlaying ? 'play' : 'pause' }));
+    } catch (error) {
+        reportNativeError(error);
+    } finally {
+        if (seq === transportSyncSeq) {
+            pendingTransportTarget = null;
+        }
     }
 }
 
@@ -195,6 +372,188 @@ export const usePlayerStore = create<PlayerStore>()(
             let recorded = false;
             let wantsPlayback = false;
             let fade = 1;
+            const loadAndroidStream = async ({
+                attempt,
+                generation,
+                streamUrl,
+                mimeType,
+                data,
+                requiresFallback = false,
+            }: {
+                attempt: AbortController;
+                generation: number;
+                streamUrl: string;
+                mimeType?: string;
+                data: Invidious;
+                requiresFallback?: boolean;
+            }): Promise<boolean> => {
+                const capabilities = await getNativeCapabilities();
+                if (attempt.signal.aborted || generation !== queueGeneration) return false;
+
+                const expiresAtMs = computeSourceExpiryMs(streamUrl);
+                const source: NativeTrackSource | undefined = expiresAtMs !== null
+                    ? {
+                        url: streamUrl,
+                        ...(mimeType ? { mimeType } : {}),
+                        expiresAtMs,
+                    }
+                    : undefined;
+
+                let sentPlay = wantsPlayback;
+                let sentQueue: QueueItem[] = get().queue;
+                let sentDisableRevision = fallbackDisableRevision;
+                const snapshot = await enqueueNativeMutation(async () => {
+                    if (attempt.signal.aborted || generation !== queueGeneration) return null;
+                    const current = get();
+                    sentQueue = current.queue;
+                    sentPlay = wantsPlayback;
+                    const activeRow = current.queue[current.queueIndex];
+                    if (requiresFallback && (!activeRow || !getActiveFailoverMatch(activeRow.queueId))) {
+                        throw new Error('JioSaavn fallback is no longer active');
+                    }
+                    const nativeItems = buildNativeQueue(
+                        current.queue,
+                        capabilities,
+                        activeRow
+                            ? {
+                                queueId: activeRow.queueId,
+                                legacyUrl: streamUrl,
+                                source,
+                            }
+                            : undefined,
+                    );
+                    sentDisableRevision = fallbackDisableRevision;
+                    return NativePlayback.loadQueue({
+                        queue: nativeItems,
+                        index: current.queueIndex,
+                        repeat: nativeRepeat[current.repeatMode],
+                        volume: current.isMuted ? 0 : current.volume * fade,
+                        play: sentPlay,
+                        ...(capabilities.abiVersion >= 2 ? { generation } : {}),
+                    });
+                });
+                if (!snapshot || attempt.signal.aborted || generation !== queueGeneration) return false;
+
+                nativeLoading = false;
+                nativeListening.id = '';
+                const latest = get();
+                const activeRow = latest.queue[latest.queueIndex];
+                if (capabilities.sourceRefresh && activeRow && source?.expiresAtMs) {
+                    const effectiveTrackId =
+                        getActiveFailoverMatch(activeRow.queueId)?.matchedTrack.id ?? activeRow.song.id;
+                    lookahead.markFresh(generation, activeRow.queueId, effectiveTrackId, source.expiresAtMs);
+                }
+                const transportMismatch = sentPlay !== wantsPlayback;
+                if (transportMismatch) {
+                    pendingTransportTarget = wantsPlayback;
+                }
+                const needsQueueSync = get().queue !== sentQueue || sentDisableRevision !== fallbackDisableRevision;
+                applyNativeState(snapshot, needsQueueSync);
+                set({ streamData: data });
+                if (transportMismatch) void syncNativeTransport(wantsPlayback);
+                if (needsQueueSync) {
+                    void enqueueNativeMutation(async () => {
+                        if (attempt.signal.aborted || generation !== queueGeneration || !nativeLoaded || nativeLoading) return;
+                        await NativePlayback.updateQueue({
+                            queue: buildNativeQueue(get().queue, capabilities),
+                            ...(capabilities.abiVersion >= 2 ? { generation } : {}),
+                        });
+                        if (generation === queueGeneration) scheduleLookahead();
+                    }).catch(reportNativeError);
+                } else if (capabilities.sourceRefresh && nativeLoaded && !nativeLoading) {
+                    scheduleLookahead();
+                }
+                return true;
+            };
+
+            onNativeRowFailover = (queueId, queueIndex, song, expectedGeneration, errorMessage) => {
+                if (expectedGeneration !== queueGeneration) return;
+                playbackAttempt?.abort();
+                const attempt = new AbortController();
+                playbackAttempt = attempt;
+                lookahead.reset();
+                transportSyncSeq += 1;
+                pendingTransportTarget = null;
+                const playAfterFailover = wantsPlayback || nativeListening.playing;
+                wantsPlayback = playAfterFailover;
+                nativeLoading = true;
+                nativeLoaded = false;
+
+                set({
+                    queueIndex,
+                    currentSong: song,
+                    isBuffering: true,
+                    isPlaying: false,
+                    error: null,
+                    currentTime: 0,
+                    duration: 0,
+                    streamData: null,
+                    status: 'Trying JioSaavn fallback...',
+                });
+
+                void (async () => {
+                    let activeGeneration = expectedGeneration;
+                    try {
+                        const fallbackStore = useSaavnFallbackStore.getState();
+                        const match = fallbackStore.enabled
+                            ? await fallbackStore.resolveTrackFallback(song, { signal: attempt.signal })
+                            : null;
+                        if (attempt.signal.aborted || activeGeneration !== queueGeneration) return;
+
+                        useSaavnFallbackStore.getState().recordYouTubeFailure({
+                            trackId: song.id,
+                            error: errorMessage,
+                            aborted: attempt.signal.aborted,
+                        });
+
+                        if (!match || !useSaavnFallbackStore.getState().enabled) {
+                            nativeLoading = false;
+                            wantsPlayback = false;
+                            set({ error: errorMessage, isBuffering: false, isPlaying: false, status: '' });
+                            return;
+                        }
+
+                        const targetIndex = get().queue.findIndex(row => row.queueId === queueId);
+                        if (targetIndex < 0) return;
+                        if (get().queueIndex !== targetIndex) {
+                            set({ queueIndex: targetIndex });
+                        }
+
+                        activeGeneration = ++queueGeneration;
+                        activeFailoverMatches.set(queueId, match);
+                        const fallbackData: Invidious = {
+                            title: match.matchedTrack.title,
+                            adaptiveFormats: [
+                                {
+                                    url: match.streamUrl,
+                                    type: match.mimeType,
+                                    bitrate: '320000',
+                                    encoding: 'aac',
+                                },
+                            ],
+                        };
+                        await loadAndroidStream({
+                            attempt,
+                            generation: activeGeneration,
+                            streamUrl: match.streamUrl,
+                            mimeType: match.mimeType,
+                            data: fallbackData,
+                            requiresFallback: true,
+                        });
+                    } catch (err) {
+                        if (attempt.signal.aborted || activeGeneration !== queueGeneration) return;
+                        nativeLoading = false;
+                        wantsPlayback = false;
+                        set({
+                            error: err instanceof Error ? err.message : errorMessage,
+                            isBuffering: false,
+                            isPlaying: false,
+                            status: '',
+                        });
+                    }
+                })();
+            };
+
             const updateVolume = () => {
                 const { volume, isMuted } = get();
                 if (androidPlayback) {
@@ -216,14 +575,14 @@ export const usePlayerStore = create<PlayerStore>()(
             
             // Initialize audio event listeners
             audio.addEventListener('timeupdate', () => {
-                if (!audio.getAttribute('src')) return;
+                if (androidPlayback || !audio.getAttribute('src')) return;
                 recordListening();
                 if (document.activeElement?.matches('input[type="range"]')) return;
                 set({ currentTime: Math.floor(audio.currentTime) });
             });
 
             audio.addEventListener('loadedmetadata', () => {
-                if (!audio.getAttribute('src')) return;
+                if (androidPlayback || !audio.getAttribute('src')) return;
                 set({ 
                     duration: Math.floor(audio.duration),
                     isBuffering: false 
@@ -231,11 +590,12 @@ export const usePlayerStore = create<PlayerStore>()(
             });
 
             audio.addEventListener('play', () => {
-                if (!audio.getAttribute('src') || audio.paused) return;
+                if (androidPlayback || !audio.getAttribute('src') || audio.paused) return;
                 set({ isPlaying: true, isBuffering: false });
             });
 
             audio.addEventListener('pause', () => {
+                if (androidPlayback) return;
                 if (audio.paused) {
                     recordListening();
                     set({ isPlaying: false });
@@ -243,20 +603,22 @@ export const usePlayerStore = create<PlayerStore>()(
             });
 
             audio.addEventListener('ended', () => {
+                if (androidPlayback) return;
                 if (audio.ended && get().currentSong) get()._onTrackEnded();
             });
 
             audio.addEventListener('waiting', () => {
-                if (!audio.getAttribute('src') || !wantsPlayback) return;
+                if (androidPlayback || !audio.getAttribute('src') || !wantsPlayback) return;
                 set({ isBuffering: true, status: 'Buffering...' });
             });
 
             audio.addEventListener('canplay', () => {
-                if (!audio.getAttribute('src')) return;
+                if (androidPlayback || !audio.getAttribute('src')) return;
                 set({ isBuffering: false, status: '' });
             });
 
             audio.addEventListener('error', () => {
+                if (androidPlayback) return;
                 const mediaError = audio.error;
                 if (!mediaError || !audio.getAttribute('src')) return;
                 const errorCode = mediaError?.code;
@@ -336,18 +698,31 @@ export const usePlayerStore = create<PlayerStore>()(
                     playbackAttempt?.abort();
                     const attempt = new AbortController();
                     playbackAttempt = attempt;
+                    const generation = androidPlayback ? ++queueGeneration : 0;
+                    // Standalone selections replace the queue; retries keep their row.
+                    const standalone = state.queue[state.queueIndex]?.song.id !== song.id;
+                    const queue = standalone ? [createQueueItem(song)] : state.queue;
+                    const activeQueueId = !standalone ? queue[state.queueIndex]?.queueId : undefined;
+                    const mappedFailover = activeQueueId && androidPlayback
+                        ? getActiveFailoverMatch(activeQueueId)
+                        : undefined;
+                    const effectiveTrackId = mappedFailover?.matchedTrack.id ?? song.id;
                     if (androidPlayback) {
+                        lookahead.reset();
+                        transportSyncSeq += 1;
+                        pendingTransportTarget = null;
+                        nativeCleared = false;
                         nativeLoading = true;
+                        if (standalone) clearFailoverTracking();
                         if (nativeLoaded) void nativeControl('pause');
                         nativeLoaded = false;
+                        if (useSaavnFallbackStore.getState().mode === 'jiosaavn-fallback') {
+                            void useSaavnFallbackStore.getState().maybeProbeRecovery();
+                        }
                     }
                     audio.pause();
                     audio.removeAttribute('src');
                     audio.load();
-
-                    // Standalone selections replace the queue; retries keep their row.
-                    const standalone = state.queue[state.queueIndex]?.song.id !== song.id;
-                    const queue = standalone ? [createQueueItem(song)] : state.queue;
 
                     set({
                         ...(standalone ? { queue, originalQueue: queue, queueIndex: 0, isShuffled: false } : {}),
@@ -363,7 +738,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
                     try {
                         // Fetch stream data from Invidious proxy
-                        const data = await getStreamData(song.id, false, attempt.signal);
+                        const data = await getStreamData(effectiveTrackId, false, attempt.signal);
                         
                         if ('error' in data) {
                             throw new Error(String(data.message) || 'Failed to fetch stream');
@@ -394,22 +769,14 @@ export const usePlayerStore = create<PlayerStore>()(
                         if (attempt.signal.aborted) return;
 
                         if (androidPlayback) {
-                            const latest = get();
-                            const play = wantsPlayback;
-                            const snapshot = await NativePlayback.loadQueue({
-                                queue: nativeQueue(latest.queue, latest.queue[latest.queueIndex]?.queueId, streamUrl),
-                                index: latest.queueIndex, repeat: nativeRepeat[latest.repeatMode],
-                                volume: latest.isMuted ? 0 : latest.volume * fade, play,
+                            await loadAndroidStream({
+                                attempt,
+                                generation,
+                                streamUrl,
+                                mimeType: stream.type,
+                                data,
+                                requiresFallback: Boolean(mappedFailover),
                             });
-                            if (attempt.signal.aborted) return;
-                            nativeLoading = false;
-                            nativeListening.id = '';
-                            applyNativeState(snapshot);
-                            set({ streamData: data });
-                            if (play !== wantsPlayback) void nativeControl(wantsPlayback ? 'play' : 'pause');
-                            if (get().queue !== latest.queue) {
-                                void NativePlayback.updateQueue({ queue: nativeQueue(get().queue) }).catch(reportNativeError);
-                            }
                             return;
                         }
 
@@ -444,7 +811,73 @@ export const usePlayerStore = create<PlayerStore>()(
                         prefetchNextSong();
                     } catch (err) {
                         if (attempt.signal.aborted) return;
-                        if (androidPlayback) nativeLoading = false;
+                        if (androidPlayback) {
+                            if (generation !== queueGeneration) return;
+                            const activeRow = get().queue[get().queueIndex];
+                            const activeQueueId = activeRow?.queueId;
+                            if (
+                                activeQueueId &&
+                                isEligibleYouTubeTrackId(song.id) &&
+                                !fallbackAttemptedQueueIds.has(activeQueueId)
+                            ) {
+                                fallbackAttemptedQueueIds.add(activeQueueId);
+                                const fallbackStore = useSaavnFallbackStore.getState();
+                                const match = fallbackStore.enabled
+                                    ? await fallbackStore.resolveTrackFallback(song, { signal: attempt.signal })
+                                    : null;
+                                if (attempt.signal.aborted || generation !== queueGeneration) return;
+                                useSaavnFallbackStore.getState().recordYouTubeFailure({
+                                    trackId: song.id,
+                                    error: err,
+                                    aborted: attempt.signal.aborted,
+                                });
+                                if (match && useSaavnFallbackStore.getState().enabled) {
+                                        const latestRow = get().queue[get().queueIndex];
+                                        if (latestRow?.queueId === activeQueueId) {
+                                            const fallbackGeneration = ++queueGeneration;
+                                            activeFailoverMatches.set(activeQueueId, match);
+                                            try {
+                                                const fallbackData: Invidious = {
+                                                    title: match.matchedTrack.title,
+                                                    adaptiveFormats: [
+                                                        {
+                                                            url: match.streamUrl,
+                                                            type: match.mimeType,
+                                                            bitrate: '320000',
+                                                            encoding: 'aac',
+                                                        },
+                                                    ],
+                                                };
+                                                await loadAndroidStream({
+                                                    attempt,
+                                                    generation: fallbackGeneration,
+                                                    streamUrl: match.streamUrl,
+                                                    mimeType: match.mimeType,
+                                                    data: fallbackData,
+                                                    requiresFallback: true,
+                                                });
+                                                return;
+                                            } catch (fallbackErr) {
+                                                if (attempt.signal.aborted || fallbackGeneration !== queueGeneration) {
+                                                    return;
+                                                }
+                                                nativeLoading = false;
+                                                wantsPlayback = false;
+                                                set({
+                                                    error: fallbackErr instanceof Error
+                                                        ? fallbackErr.message
+                                                        : 'Failed to load fallback stream',
+                                                    isBuffering: false,
+                                                    isPlaying: false,
+                                                    status: '',
+                                                });
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            nativeLoading = false;
+                        }
                         if (!wantsPlayback && !audio.error && audio.getAttribute('src')) return;
                         wantsPlayback = false;
                         audio.pause();
@@ -472,7 +905,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 pause: () => {
                     wantsPlayback = false;
                     if (androidPlayback) {
-                        if (nativeLoaded || nativeLoading) void nativeControl('pause');
+                        if (nativeLoaded) void syncNativeTransport(false);
                         set({ isPlaying: false, isBuffering: false, status: '' });
                         return;
                     }
@@ -491,7 +924,7 @@ export const usePlayerStore = create<PlayerStore>()(
                             return;
                         }
                         if (error || !nativeLoaded) return get().retryPlayback();
-                        await nativeControl('play');
+                        await syncNativeTransport(true);
                         return;
                     }
                     if (isBuffering && !audio.getAttribute('src')) return;
@@ -507,8 +940,14 @@ export const usePlayerStore = create<PlayerStore>()(
                 },
 
                 retryPlayback: async () => {
-                    const { currentSong } = get();
-                    if (currentSong) await get().playSong(currentSong);
+                    const { currentSong, queue, queueIndex } = get();
+                    if (!currentSong) return;
+                    const activeQueueId = queue[queueIndex]?.queueId;
+                    if (activeQueueId) {
+                        activeFailoverMatches.delete(activeQueueId);
+                        fallbackAttemptedQueueIds.delete(activeQueueId);
+                    }
+                    await get().playSong(currentSong);
                 },
 
                 next: async () => {
@@ -591,7 +1030,10 @@ export const usePlayerStore = create<PlayerStore>()(
 
                 setRepeatMode: (mode: RepeatMode) => {
                     set({ repeatMode: mode });
-                    if (androidPlayback && nativeLoaded) void nativeControl('repeat', nativeRepeat[mode]);
+                    if (androidPlayback && nativeLoaded) {
+                        void nativeControl('repeat', nativeRepeat[mode]);
+                        scheduleLookahead();
+                    }
                 },
 
                 toggleShuffle: () => {
@@ -651,6 +1093,9 @@ export const usePlayerStore = create<PlayerStore>()(
                         if (queue.length === 1) get().clearQueue();
                         return; // Clear stops a sole track; otherwise keep the active row.
                     }
+                    fallbackAttemptedQueueIds.delete(queueId);
+                    activeFailoverMatches.delete(queueId);
+                    startedQueueIds.delete(queueId);
                     set(state => {
                         const removeIndex = state.queue.findIndex(q => q.queueId === queueId);
                         if (removeIndex === -1) return state;
@@ -700,6 +1145,12 @@ export const usePlayerStore = create<PlayerStore>()(
                     playbackAttempt?.abort();
                     playbackAttempt = undefined;
                     if (androidPlayback) {
+                        lookahead.reset();
+                        clearFailoverTracking();
+                        transportSyncSeq += 1;
+                        pendingTransportTarget = null;
+                        queueGeneration += 1;
+                        nativeCleared = true;
                         nativeLoading = false;
                         nativeLoaded = false;
                         void nativeControl('clear');
@@ -734,6 +1185,16 @@ export const usePlayerStore = create<PlayerStore>()(
 
                 setQueue: async (songs: TrackItem[], startIndex = 0, shuffled = false) => {
                     if (!songs.length) return get().clearQueue();
+                    if (androidPlayback) {
+                        playbackAttempt?.abort();
+                        lookahead.reset();
+                        clearFailoverTracking();
+                        transportSyncSeq += 1;
+                        pendingTransportTarget = null;
+                        queueGeneration += 1;
+                        nativeCleared = false;
+                        nativeLoading = true;
+                    }
                     const items = songs.map(createQueueItem);
                     const selected = shuffled ? undefined : items[startIndex] ?? items[0];
                     const seen = new Set<string>();
@@ -816,6 +1277,7 @@ export const usePlayerStore = create<PlayerStore>()(
                 _setError: (error: string | null) => set({ error }),
 
                 _onTrackEnded: () => {
+                    if (androidPlayback) return;
                     recordListening();
                     const { repeatMode, audio, sleepTimer } = get();
                     if (sleepTimer.preset === 'end_of_song') {
@@ -892,15 +1354,63 @@ export function initializePlayerStore(): void {
     if (androidPlayback) {
         if (nativeInitialized) return;
         nativeInitialized = true;
-        void NativePlayback.addListener('state', applyNativeState)
-            .then(() => NativePlayback.getState()).then(applyNativeState).catch(reportNativeError);
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) void NativePlayback.getState().then(applyNativeState).catch(reportNativeError);
+        const syncQueue = () => {
+            if (!nativeLoaded || nativeLoading || !usePlayerStore.getState().queue.length) return;
+            const gen = queueGeneration;
+            void enqueueNativeMutation(async () => {
+                const capabilities = await getNativeCapabilities();
+                if (gen !== queueGeneration || !nativeLoaded || nativeLoading) return;
+                const { queue } = usePlayerStore.getState();
+                if (!queue.length) return;
+                await NativePlayback.updateQueue({
+                    queue: buildNativeQueue(queue, capabilities),
+                    ...(capabilities.abiVersion >= 2 ? { generation: gen } : {}),
+                });
+                if (gen === queueGeneration) scheduleLookahead();
+            }).catch(reportNativeError);
+        };
+        useSaavnFallbackStore.subscribe((state, previous) => {
+            if (!previous.enabled || state.enabled) return;
+            fallbackDisableRevision += 1;
+            activeFailoverMatches.clear();
+            fallbackAttemptedQueueIds.clear();
+            lookahead.reset();
+            syncQueue();
         });
+        void getNativeCapabilities();
+        void NativePlayback.addListener('state', applyNativeState)
+            .then(() => NativePlayback.getState())
+            .then((snapshot) => {
+                if (applyNativeState(snapshot)) {
+                    scheduleLookahead();
+                }
+            })
+            .catch(reportNativeError);
+        if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                void (async () => {
+                    try {
+                        await getNativeCapabilities();
+                        const snapshot = await NativePlayback.getState();
+                        if (applyNativeState(snapshot)) {
+                            scheduleLookahead();
+                        }
+                    } catch (error) {
+                        reportNativeError(error);
+                    }
+                })();
+            });
+        }
         usePlayerStore.subscribe((state, previous) => {
-            if (nativeLoaded && !nativeLoading && state.queue !== previous.queue && state.currentSong === previous.currentSong &&
-                state.queue[state.queueIndex]?.queueId === previous.queue[previous.queueIndex]?.queueId) {
-                void NativePlayback.updateQueue({ queue: nativeQueue(state.queue) }).catch(reportNativeError);
+            if (
+                nativeLoaded &&
+                !nativeLoading &&
+                state.queue !== previous.queue &&
+                state.currentSong === previous.currentSong &&
+                state.queue[state.queueIndex]?.queueId === previous.queue[previous.queueIndex]?.queueId
+            ) {
+                syncQueue();
             }
         });
         return;

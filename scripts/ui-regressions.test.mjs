@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import React, { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Capacitor } from '@capacitor/core';
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
 
@@ -562,4 +565,159 @@ test('panel widths clamp to bounds and reset via store and console API', async (
         sidebarWidth: PANEL_WIDTHS.SIDEBAR_DEFAULT,
         rightPanelWidth: PANEL_WIDTHS.RIGHT_DEFAULT,
     });
+});
+
+test('console API exposes m14u.fallback status, setEnabled, retryYouTube, reset, and help() docs', async (t) => {
+    const {
+        useSaavnFallbackStore,
+        configureSaavnFallbackForTest,
+        resetSaavnFallbackDepsForTest,
+    } = await server.ssrLoadModule('/src/services/saavnFallback.ts');
+
+    globalThis.window = {};
+    registerConsoleAPI();
+    const api = window.m14u;
+    api.log.enable();
+    t.after(() => {
+        resetSaavnFallbackDepsForTest();
+        useSaavnFallbackStore.getState().reset();
+        api.log.clear();
+        api.log.disable();
+        api.clearErrors();
+        delete globalThis.window;
+    });
+
+    const helpCmds = api.help();
+    for (const cmd of ['fallback.status()', 'fallback.retryYouTube()', 'fallback.setEnabled(enabled)', 'fallback.reset()']) {
+        assert.equal(helpCmds.includes(cmd), true, `Expected help() to include ${cmd}`);
+    }
+
+    assert.deepEqual(api.fallback.status(), {
+        enabled: true,
+        mode: 'youtube',
+        cooldownUntil: null,
+        backoffStep: 0,
+        probing: false,
+        recentFailureCount: 0,
+        activeTrackNotice: null,
+        sessionBannerVisible: false,
+        lastError: null,
+    });
+
+    assert.equal(api.fallback.setEnabled(false), false);
+    assert.equal(api.fallback.status().enabled, false);
+    assert.throws(() => api.fallback.setEnabled('yes'), /fallback\.setEnabled: expected boolean/);
+    assert.equal(api.lastError()?.name, 'fallback.setEnabled');
+    assert.equal(api.fallback.setEnabled(true), true);
+
+    let probeCalls = 0;
+    configureSaavnFallbackForTest({
+        now: () => 100_000,
+        isNative: () => true,
+        isOnline: () => true,
+        probeYouTubeHealth: async () => { probeCalls += 1; },
+    });
+
+    const store = useSaavnFallbackStore.getState;
+    store().recordYouTubeFailure({ trackId: 'yt-1', error: new Error('YouTube fail 1'), alternateReachable: true });
+    store().recordYouTubeFailure({ trackId: 'yt-2', error: new Error('YouTube fail 2'), alternateReachable: true });
+    store().recordYouTubeFailure({ trackId: 'yt-3', error: new Error('YouTube fail 3'), alternateReachable: true });
+
+    const openStatus = api.fallback.status();
+    assert.equal(openStatus.mode, 'jiosaavn-fallback');
+    assert.equal(openStatus.recentFailureCount, 3);
+    assert.equal(openStatus.sessionBannerVisible, true);
+    assert.equal(openStatus.backoffStep, 0);
+    assert.equal(typeof openStatus.cooldownUntil, 'number');
+    assert.equal(openStatus.lastError, 'YouTube fail 3');
+
+    assert.equal(await api.fallback.retryYouTube(), true);
+    assert.equal(probeCalls, 1);
+
+    const restoredStatus = api.fallback.status();
+    assert.equal(restoredStatus.mode, 'youtube');
+    assert.equal(restoredStatus.sessionBannerVisible, false);
+    assert.equal(restoredStatus.recentFailureCount, 0);
+    assert.equal(store().sessionRestoredNotice, 'YouTube playback restored');
+
+    api.fallback.reset();
+    assert.equal(store().sessionRestoredNotice, null);
+
+    const actionNames = api.log.get().filter(entry => entry.type === 'ACTION').map(entry => entry.name);
+    assert.equal(actionNames.includes('fallback.setEnabled'), true);
+    assert.equal(actionNames.includes('fallback.retryYouTube'), true);
+    assert.equal(actionNames.includes('fallback.reset'), true);
+});
+
+test('AndroidFallbackNotice renders only on native and displays F1 toast, F3 banner, probing state, and restored notice', async (t) => {
+    const {
+        useSaavnFallbackStore,
+        configureSaavnFallbackForTest,
+        resetSaavnFallbackDepsForTest,
+    } = await server.ssrLoadModule('/src/services/saavnFallback.ts');
+    const { AndroidFallbackNotice } = await server.ssrLoadModule('/src/components/player/AndroidFallbackNotice.tsx');
+
+    let nativePlatform = false;
+    t.mock.method(Capacitor, 'isNativePlatform', () => nativePlatform);
+    const origSyncExternalStore = React.useSyncExternalStore;
+    t.mock.method(React, 'useSyncExternalStore', (sub, getSnap) => origSyncExternalStore(sub, getSnap, getSnap));
+    t.after(() => {
+        resetSaavnFallbackDepsForTest();
+        useSaavnFallbackStore.getState().reset();
+    });
+
+    configureSaavnFallbackForTest({
+        now: () => 50_000,
+        isNative: () => true,
+        isOnline: () => true,
+        searchJioSaavn: async () => [{
+            id: 'jiosaavn:faded-1',
+            title: 'Faded',
+            author: 'Alan Walker',
+            durationSec: 212,
+            type: 'song',
+        }],
+        jioSaavnAudioUrl: (id, options) => (options?.allowNative ? `https://saavn.test/${id}` : null),
+    });
+
+    const store = useSaavnFallbackStore.getState;
+    await store().resolveTrackFallback({ id: 'yt-faded', title: 'Faded', author: 'Alan Walker', durationSec: 212 });
+    store().recordYouTubeFailure({ trackId: 'yt-1', error: new Error('fail 1') });
+    store().recordYouTubeFailure({ trackId: 'yt-2', error: new Error('fail 2') });
+    store().recordYouTubeFailure({ trackId: 'yt-3', error: new Error('fail 3') });
+
+    // Non-native web renders nothing
+    assert.equal(renderToStaticMarkup(createElement(AndroidFallbackNotice)), '');
+
+    // Native renders both F3 banner and F1 toast
+    nativePlatform = true;
+    const html = renderToStaticMarkup(createElement(AndroidFallbackNotice));
+    assert.match(html, /YouTube playback is temporarily unavailable — using JioSaavn for now/);
+    assert.match(html, /Retry YouTube/);
+    assert.match(html, /YouTube only/);
+    assert.match(html, /Dismiss YouTube outage banner/);
+    assert.match(html, /YouTube unavailable — playing JioSaavn match:/);
+    assert.match(html, /Faded/);
+    assert.match(html, /Dismiss fallback match notice/);
+    assert.match(html, /bottom-3/);
+
+    const nowPlayingHtml = renderToStaticMarkup(createElement(AndroidFallbackNotice, { variant: 'toast', isNowPlaying: true }));
+    assert.match(nowPlayingHtml, /top-14/);
+
+    // Probing state swaps button label to Checking…
+    useSaavnFallbackStore.setState({ probing: true });
+    const probingHtml = renderToStaticMarkup(createElement(AndroidFallbackNotice, { variant: 'banner' }));
+    assert.match(probingHtml, /Checking…/);
+    assert.doesNotMatch(probingHtml, /YouTube unavailable — playing JioSaavn match:/);
+
+    // Restored notice toast
+    useSaavnFallbackStore.setState({
+        mode: 'youtube',
+        probing: false,
+        sessionBannerVisible: false,
+        activeTrackNotice: null,
+        sessionRestoredNotice: 'YouTube playback restored',
+    });
+    const restoredHtml = renderToStaticMarkup(createElement(AndroidFallbackNotice, { variant: 'toast' }));
+    assert.match(restoredHtml, /YouTube playback restored/);
 });

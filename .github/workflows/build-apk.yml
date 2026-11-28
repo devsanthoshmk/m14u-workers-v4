@@ -59,16 +59,22 @@ jobs:
         pnpm test:ui
         pnpm test:catalog
         pnpm test:netlify
+        pnpm test:resolver
+        pnpm test:resolver:smoke
 
     - name: Build web assets and sync Capacitor
       env:
         VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+        CAPACITOR_RELEASE: '1'
       run: |
         pnpm build
         pnpm exec cap sync android
 
     - name: Test and build Android
       working-directory: android
+      env:
+        ORG_GRADLE_PROJECT_RESOLVER_V2_PUBLIC_KEYS: ${{ vars.RESOLVER_V2_PUBLIC_KEYS || secrets.RESOLVER_V2_PUBLIC_KEYS }}
+        ORG_GRADLE_PROJECT_RESOLVER_V2_MANIFEST_URL: ${{ vars.RESOLVER_V2_MANIFEST_URL || secrets.RESOLVER_V2_MANIFEST_URL }}
       run: |
         if [[ "$RELEASE_BUILD" == true ]]; then
           ./gradlew :app:test :app:assembleRelease

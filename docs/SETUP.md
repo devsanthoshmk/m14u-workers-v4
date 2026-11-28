@@ -23,8 +23,9 @@ Vite exposes `VITE_*` values to client code. Treat them as public, and rebuild a
 | `VITE_JIOSAAVN_API_URL` | Optional override for primary JioSaavn search. Defaults to `https://m14u-jiosaavn.vercel.app`. Android does not use it. |
 | `VITE_JIOSAAVN_FALLBACK_URL` | Optional override for the Render search fallback and audio relay. Defaults to `https://m14u-jiosaavn.onrender.com`. Android does not use it. |
 | `VITE_INVIDIOUS_URL` | Preferred Invidious provider for YouTube tracks. Normal playback can try other defaults. |
+| `VITE_YOUTUBE_JS_RESOLVER` | Optional Android foreground JS-first YouTube resolver toggle (`getStreamData.ts`). Enabled unless set to `'false'`, which skips foreground `youtubei.js` / `CapacitorHttp` extraction and falls back to v1 `liveResolver` (if configured), NewPipe, and Invidious. |
 | `VITE_FIREBASE_API_KEY` | Optional restricted Firebase web API key. Vite generates `/firebase-messaging-sw.js` only when this is set. GitHub Actions reads it from a repository secret of the same name. Set it in your web host's build environment for web deployments. |
-| `VITE_RESOLVER_MANIFEST_URL`, `VITE_RESOLVER_PUBLIC_KEY` | Enable the optional Android live resolver. See [signing and setup](LIVE-RESOLVER-SETUP.md). |
+| `VITE_RESOLVER_MANIFEST_URL`, `VITE_RESOLVER_PUBLIC_KEY` | Enable the optional **v1** foreground Web Worker live resolver. See [signing and setup](LIVE-RESOLVER-SETUP.md#v1-foreground-web-worker-resolver-legacy). |
 
 ### Vercel JioSaavn search
 
@@ -50,8 +51,10 @@ In Cloudflare, open the existing `m14u-api` Worker and go to **Settings → Buil
 
 Under **Build watch paths**, include `src/*`, `wrangler.toml`, `package.json`, and `pnpm-lock.yaml` so Android-only and docs-only changes don't trigger a Worker deploy.
 
-The existing `m14u` Pages project uses its GitHub integration, not a second Actions deploy. Keep production auto-deploys enabled for `main`, with the repository root as the build root, Node.js 22, build command `pnpm build`, and output directory `dist`. The checked-in `public/_redirects` supplies the SPA fallback. Set any optional `VITE_*` overrides in the Pages production build environment.
+The existing `m14u` Pages project uses its GitHub integration, not a second Actions deploy. Keep production auto-deploys enabled for `main`, with the repository root as the build root, Node.js 22, build command `pnpm build`, and output directory `dist`. The checked-in [`public/_redirects`](../public/_redirects) supplies the SPA fallback, and [`public/_headers`](../public/_headers) sets cache rules for `/resolvers/v2/manifest.json` (`no-store, no-cache`) and `/resolvers/v2/*/resolver.js` (`immutable`). Set any optional `VITE_*` overrides in the Pages production build environment.
 
 After both deployments finish, verify `/api/search?q=Bach`, then use a returned ID in `/api/stream?id=…` and play it in the Pages UI. The Worker returns details and a direct MP3 or Ogg URL; it does not relay audio bytes.
 
 For Android, use JDK 21 and an Android SDK with the compile platform in [`android/variables.gradle`](../android/variables.gradle) installed. Set your SDK path through Android Studio or `ANDROID_HOME`. Use the checked-in Gradle wrapper via `pnpm android:build`; see [Android build and smoke checks](CAPACITOR.md#build-and-verify).
+
+To enable the **v2** headless Android resolver in an APK build, set Gradle properties (or environment variables) `RESOLVER_V2_PUBLIC_KEYS` and optionally `RESOLVER_V2_MANIFEST_URL` (default `https://m14u.pages.dev/resolvers/v2/manifest.json`). [`android/app/build.gradle`](../android/app/build.gradle) writes both into `BuildConfig`, and [GitHub Actions](../.github/workflows/build-apk.yml) forwards `ORG_GRADLE_PROJECT_RESOLVER_V2_PUBLIC_KEYS` and `ORG_GRADLE_PROJECT_RESOLVER_V2_MANIFEST_URL` from repository `vars` or `secrets` when configured. See [live resolver setup](LIVE-RESOLVER-SETUP.md#v2-headless-service-resolver-api-26).

@@ -1,6 +1,7 @@
 import type { Song, TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
-import { isNative } from '@/lib/utils/platform';
+import { getCachedNativeCapabilities, isNative } from '@/lib/utils/platform';
+import type { NativeCapabilities } from '@/plugins/NativePlayback';
 import { jioSaavnSearchOrigin, searchJioSaavn } from '@/services/jiosaavn';
 import { normalizeMusicLanguage, normalizeMusicLanguages, rankSongsByLanguage } from '@/lib/utils/musicLanguage';
 import { useListeningPreferences, MUSIC_LANGUAGES } from '@/stores/listeningPreferences';
@@ -8,6 +9,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { WebCatalog } from '@/stores/catalogStore';
 import { toTrackItem } from '@/utils/trackMetadata';
 import { LOCALE_OPTIONS } from '@/utils/constants';
+import { anyAbortSignal, timeoutAbortSignal } from '@/lib/modules/resolver/abortSignal';
 
 export const FALLBACK_OPEN_TRACKS: TrackItem[] = [
     {
@@ -60,11 +62,11 @@ export async function getAndroidRecommendations(
 
     // 1. If we have a recent track with a valid YouTube video ID, try /api/up-next
     if (seed && /^[\w-]{11}$/.test(seed.id)) {
+        const timeout = timeoutAbortSignal(6000);
+        const combined = signal ? anyAbortSignal([signal, timeout.signal]) : undefined;
         try {
-            const timeout = AbortSignal.timeout(6000);
-            const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
             const res = await fetch(`${baseUrl}/api/up-next?id=${encodeURIComponent(seed.id)}`, {
-                signal: requestSignal,
+                signal: combined ? combined.signal : timeout.signal,
             });
             if (res.ok) {
                 const data = await res.json();
@@ -86,6 +88,9 @@ export async function getAndroidRecommendations(
             }
         } catch {
             // Fall through to query-based fallback
+        } finally {
+            combined?.cleanup();
+            timeout.cleanup();
         }
     }
 
@@ -94,12 +99,12 @@ export async function getAndroidRecommendations(
         ? (seed.author ? `${seed.author}` : seed.title)
         : (langs.length > 0 ? `${langs.slice(0, 2).join(' ')} top hits` : 'top music');
 
+    const searchTimeout = timeoutAbortSignal(8000);
+    const searchCombined = signal ? anyAbortSignal([signal, searchTimeout.signal]) : undefined;
     try {
-        const timeout = AbortSignal.timeout(8000);
-        const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
         const res = await fetch(
             `${baseUrl}/api/search?q=${encodeURIComponent(query)}&catalog=youtube&f=song`,
-            { signal: requestSignal }
+            { signal: searchCombined ? searchCombined.signal : searchTimeout.signal }
         );
         if (res.ok) {
             const data = await res.json();
@@ -110,6 +115,9 @@ export async function getAndroidRecommendations(
         }
     } catch {
         // Fall through
+    } finally {
+        searchCombined?.cleanup();
+        searchTimeout.cleanup();
     }
 
     return { seed, tracks: [] };
@@ -117,10 +125,10 @@ export async function getAndroidRecommendations(
 
 export async function getOpenAudioFeatured(signal?: AbortSignal): Promise<TrackItem[]> {
     const baseUrl = API_BASE_URL.replace(/\/+$/, '');
+    const timeout = timeoutAbortSignal(7000);
+    const combined = signal ? anyAbortSignal([signal, timeout.signal]) : undefined;
     try {
-        const timeout = AbortSignal.timeout(7000);
-        const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-        const res = await fetch(`${baseUrl}/api/search-discovery`, { signal: requestSignal });
+        const res = await fetch(`${baseUrl}/api/search-discovery`, { signal: combined ? combined.signal : timeout.signal });
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data?.tracks) && data.tracks.length > 0) {
@@ -129,6 +137,9 @@ export async function getOpenAudioFeatured(signal?: AbortSignal): Promise<TrackI
         }
     } catch {
         // Use truthful fallback tracks
+    } finally {
+        combined?.cleanup();
+        timeout.cleanup();
     }
     return FALLBACK_OPEN_TRACKS;
 }
@@ -149,7 +160,8 @@ export async function getJioSaavnShelves(
     const langs = normalizeMusicLanguages(languages);
     if (langs.length === 0) return [];
 
-    const requestSignal = signal ?? AbortSignal.timeout(20000);
+    const timeout = signal ? undefined : timeoutAbortSignal(20000);
+    const requestSignal = signal ?? timeout!.signal;
     const results: LanguageShelfData[] = new Array(langs.length);
     const CONCURRENCY = 2; // Bounded concurrency so we do not overload the service
 
@@ -177,20 +189,29 @@ export async function getJioSaavnShelves(
         }
     }
 
-    const workers = Array.from({ length: Math.min(CONCURRENCY, langs.length) }, () => worker());
-    await Promise.all(workers);
-    return results.filter(Boolean);
+    try {
+        const workers = Array.from({ length: Math.min(CONCURRENCY, langs.length) }, () => worker());
+        await Promise.all(workers);
+        return results.filter(Boolean);
+    } finally {
+        timeout?.cleanup();
+    }
 }
 
 export async function getJioSaavnGlobalTop(
     language?: string,
     signal?: AbortSignal
 ): Promise<TrackItem[]> {
-    const requestSignal = signal ?? AbortSignal.timeout(15000);
-    const lang = language ? normalizeMusicLanguage(language) : '';
-    const query = lang ? `${lang} top songs` : 'trending songs';
-    const results = await searchJioSaavn(query, requestSignal, HOME_SAAVN_TRACK_LIMIT);
-    return lang ? rankSongsByLanguage(results, lang, query) : results;
+    const timeout = signal ? undefined : timeoutAbortSignal(15000);
+    const requestSignal = signal ?? timeout!.signal;
+    try {
+        const lang = language ? normalizeMusicLanguage(language) : '';
+        const query = lang ? `${lang} top songs` : 'trending songs';
+        const results = await searchJioSaavn(query, requestSignal, HOME_SAAVN_TRACK_LIMIT);
+        return lang ? rankSongsByLanguage(results, lang, query) : results;
+    } finally {
+        timeout?.cleanup();
+    }
 }
 
 export async function getJioSaavnLanguagePicks(
@@ -198,57 +219,62 @@ export async function getJioSaavnLanguagePicks(
     signal?: AbortSignal
 ): Promise<TrackItem[]> {
     const langs = normalizeMusicLanguages(languageOrLanguages);
-    const requestSignal = signal ?? AbortSignal.timeout(15000);
+    const timeout = signal ? undefined : timeoutAbortSignal(15000);
+    const requestSignal = signal ?? timeout!.signal;
 
-    // If no language preference, query general trending songs
-    if (langs.length === 0) {
-        const query = 'trending songs';
-        const results = await searchJioSaavn(query, requestSignal);
-        return rankSongsByLanguage(results, '', query);
-    }
-
-    // Single language preference
-    if (langs.length === 1) {
-        const query = `${langs[0]} top songs`;
-        const results = await searchJioSaavn(query, requestSignal);
-        return rankSongsByLanguage(results, langs, query);
-    }
-
-    // Multiple languages: fan out to at most 3 selected languages concurrently to prevent unbounded fanout
-    const targetLangs = langs.slice(0, 3);
-    const settled = await Promise.allSettled(
-        targetLangs.map(l => searchJioSaavn(`${l} top songs`, requestSignal))
-    );
-
-    const batches: TrackItem[][] = [];
-    for (const res of settled) {
-        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
-            batches.push(res.value);
+    try {
+        // If no language preference, query general trending songs
+        if (langs.length === 0) {
+            const query = 'trending songs';
+            const results = await searchJioSaavn(query, requestSignal);
+            return rankSongsByLanguage(results, '', query);
         }
-    }
 
-    if (batches.length === 0) {
-        // If all language lookups failed, throw the first rejection if present
-        const rejected = settled.find(s => s.status === 'rejected') as PromiseRejectedResult | undefined;
-        if (rejected) throw rejected.reason;
-        return [];
-    }
+        // Single language preference
+        if (langs.length === 1) {
+            const query = `${langs[0]} top songs`;
+            const results = await searchJioSaavn(query, requestSignal);
+            return rankSongsByLanguage(results, langs, query);
+        }
 
-    // Interleave tracks so each language is represented equally
-    const seen = new Set<string>();
-    const merged: TrackItem[] = [];
-    const maxLen = Math.max(...batches.map(b => b.length));
-    for (let i = 0; i < maxLen; i++) {
-        for (const batch of batches) {
-            const track = batch[i];
-            if (track && !seen.has(track.id)) {
-                seen.add(track.id);
-                merged.push(track);
+        // Multiple languages: fan out to at most 3 selected languages concurrently to prevent unbounded fanout
+        const targetLangs = langs.slice(0, 3);
+        const settled = await Promise.allSettled(
+            targetLangs.map(l => searchJioSaavn(`${l} top songs`, requestSignal))
+        );
+
+        const batches: TrackItem[][] = [];
+        for (const res of settled) {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+                batches.push(res.value);
             }
         }
-    }
 
-    return rankSongsByLanguage(merged, langs, '');
+        if (batches.length === 0) {
+            // If all language lookups failed, throw the first rejection if present
+            const rejected = settled.find(s => s.status === 'rejected') as PromiseRejectedResult | undefined;
+            if (rejected) throw rejected.reason;
+            return [];
+        }
+
+        // Interleave tracks so each language is represented equally
+        const seen = new Set<string>();
+        const merged: TrackItem[] = [];
+        const maxLen = Math.max(...batches.map(b => b.length));
+        for (let i = 0; i < maxLen; i++) {
+            for (const batch of batches) {
+                const track = batch[i];
+                if (track && !seen.has(track.id)) {
+                    seen.add(track.id);
+                    merged.push(track);
+                }
+            }
+        }
+
+        return rankSongsByLanguage(merged, langs, '');
+    } finally {
+        timeout?.cleanup();
+    }
 }
 
 export interface ResolverDiagnostics {
@@ -261,6 +287,7 @@ export interface ResolverDiagnostics {
     liveResolverVersion?: number;
     invidiousProxy: string;
     audioEngine: string;
+    nativeCapabilities?: NativeCapabilities;
 }
 
 export function getDiagnostics(provider: WebCatalog): ResolverDiagnostics {
@@ -310,16 +337,24 @@ export function getDiagnostics(provider: WebCatalog): ResolverDiagnostics {
     }
 
     if (native) {
+        const caps = getCachedNativeCapabilities();
+        const jsResolverEnabled = import.meta.env.VITE_YOUTUBE_JS_RESOLVER !== 'false';
+        const engineDetails = caps
+            ? `Media3 / ExoPlayer (NativePlayback v${caps.abiVersion}${caps.headlessResolver ? ', headless JS' : ''})`
+            : 'Media3 / ExoPlayer (NativePlayback)';
         return {
             platform: 'Android (Capacitor Native)',
             catalogName: 'YouTube Music (Direct worker catalog)',
             catalogSourceUrl: `${baseUrl}/api/*?catalog=youtube`,
             listeningLanguage: langLabel,
-            streamPrimary: 'Bundled NewPipe Extractor (StreamExtractor plugin)',
+            streamPrimary: jsResolverEnabled
+                ? 'Foreground JS resolver (youtubei.js) → NewPipe / Invidious fallback'
+                : 'Bundled NewPipe Extractor (StreamExtractor plugin)',
             liveResolverStatus,
             liveResolverVersion,
             invidiousProxy,
-            audioEngine: 'Media3 / ExoPlayer (NativePlayback)',
+            audioEngine: engineDetails,
+            ...(caps ? { nativeCapabilities: caps } : {}),
         };
     }
 

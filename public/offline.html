@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f0f11" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none';"
+    />
+    <title>M14U — Offline</title>
+    <style>
+      :root {
+        --bg: #0f0f11;
+        --card: #161619;
+        --surface: #1d1d22;
+        --border: #27272c;
+        --fg: #f4f1ea;
+        --muted: #9898a1;
+        --accent: #e89c31;
+        --accent-hover: #f0ab46;
+        --accent-fg: #0f0f11;
+        --danger-bg: rgba(207, 68, 68, 0.14);
+        --danger-border: rgba(207, 68, 68, 0.35);
+        --danger-fg: #f2a2a2;
+        --online-bg: rgba(58, 173, 108, 0.14);
+        --online-border: rgba(58, 173, 108, 0.35);
+        --online-fg: #9ce2b9;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(24px + env(safe-area-inset-top, 0px))
+          calc(20px + env(safe-area-inset-right, 0px))
+          calc(24px + env(safe-area-inset-bottom, 0px))
+          calc(20px + env(safe-area-inset-left, 0px));
+      }
+
+      .card {
+        width: 100%;
+        max-width: 380px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 28px 24px 24px;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      .logo-wrap {
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 18px;
+        border-radius: 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .logo-wrap svg {
+        width: 36px;
+        height: 36px;
+        display: block;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-bottom: 12px;
+        background: var(--danger-bg);
+        border: 1px solid var(--danger-border);
+        color: var(--danger-fg);
+      }
+
+      .badge[data-state="online"] {
+        background: var(--online-bg);
+        border-color: var(--online-border);
+        color: var(--online-fg);
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+      }
+
+      p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+
+      .note {
+        margin-top: 10px;
+        font-size: 12.5px;
+        color: #7c7c86;
+      }
+
+      .actions {
+        margin-top: 22px;
+      }
+
+      .retry-btn {
+        width: 100%;
+        height: 46px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+      }
+
+      .retry-btn:hover {
+        background: var(--accent-hover);
+      }
+
+      .retry-btn:active:not(:disabled) {
+        transform: scale(0.985);
+      }
+
+      .retry-btn:disabled {
+        opacity: 0.68;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main" aria-labelledby="offline-title">
+      <div class="logo-wrap" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="136 101 240 240">
+          <defs>
+            <linearGradient id="m14u-right" x1=".25" y1="0" x2=".8" y2="1">
+              <stop stop-color="#ffaf29" />
+              <stop offset=".52" stop-color="#ffa611" />
+              <stop offset=".54" stop-color="#d56b04" />
+              <stop offset="1" stop-color="#f48909" />
+            </linearGradient>
+            <linearGradient id="m14u-fold" x1=".27" y1="0" x2=".73" y2="1">
+              <stop stop-color="#ffad12" />
+              <stop offset="1" stop-color="#df6d06" />
+            </linearGradient>
+          </defs>
+          <path
+            fill="url(#m14u-right)"
+            d="M255 196 330 140C344 130 362 138 362 156V271C362 287 348 297 329 303 317 307 307 302 307 288V230L277 251Z"
+          />
+          <path
+            fill="url(#m14u-fold)"
+            d="M184 304C162 295 150 285 150 269V156C150 138 168 130 183 140L294 216Q303 223 307 230L280 250Q271 256 262 250L204 210C195 203 184 207 184 219Z"
+          />
+          <path
+            fill="#ffa41a"
+            d="M207 238Q207 232 213 235L241 254Q246 257 241 261L213 279Q207 283 207 276Z"
+          />
+        </svg>
+      </div>
+
+      <div id="status-badge" class="badge" data-state="offline">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="badge-text">Offline</span>
+      </div>
+
+      <h1 id="offline-title">Connection unavailable</h1>
+      <p id="status-message">
+        M14U couldn't reach the server. Check your internet connection and try again.
+      </p>
+      <p class="note">Any active background playback continues uninterrupted.</p>
+
+      <div class="actions">
+        <button id="retry-btn" class="retry-btn" type="button">Retry</button>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        var DEFAULT_TARGET = 'https://m14u.pages.dev';
+        var statusBadge = document.getElementById('status-badge');
+        var badgeText = document.getElementById('badge-text');
+        var statusMessage = document.getElementById('status-message');
+        var retryButton = document.getElementById('retry-btn');
+        var retrying = false;
+        var retryTimerId = null;
+
+        function readParam(name) {
+          var search = new URLSearchParams(window.location.search || '');
+          var value = search.get(name);
+          if (value !== null) return value;
+          var hash = window.location.hash ? window.location.hash.slice(1) : '';
+          return new URLSearchParams(hash).get(name);
+        }
+
+        function resolveRetryTarget() {
+          if (window.location.protocol !== 'file:') {
+            return window.location.origin + '/';
+          }
+          var raw = readParam('retry');
+          if (!raw) return DEFAULT_TARGET;
+          try {
+            var parsed = new URL(raw);
+            if (parsed.username || parsed.password) return DEFAULT_TARGET;
+            var isHttps = parsed.protocol === 'https:';
+            var isLoopbackHttp =
+              parsed.protocol === 'http:' &&
+              (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') &&
+              Boolean(parsed.port);
+            if (!isHttps && !isLoopbackHttp) return DEFAULT_TARGET;
+            var path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
+            return parsed.origin + path + (parsed.search || '');
+          } catch (_err) {
+            return DEFAULT_TARGET;
+          }
+        }
+
+        function clearRetryTimer() {
+          if (retryTimerId !== null) {
+            window.clearTimeout(retryTimerId);
+            retryTimerId = null;
+          }
+        }
+
+        function resetRetryButton(timedOut) {
+          clearRetryTimer();
+          retrying = false;
+          retryButton.disabled = false;
+          retryButton.textContent = 'Retry';
+          retryButton.removeAttribute('aria-busy');
+          if (timedOut) {
+            statusMessage.textContent =
+              'Connection is taking longer than expected. Tap Retry to try again.';
+          }
+          updateOnlineHint();
+        }
+
+        function updateOnlineHint() {
+          if (retrying) return;
+          if (navigator.onLine) {
+            statusBadge.setAttribute('data-state', 'online');
+            badgeText.textContent = 'Back online';
+          } else {
+            statusBadge.setAttribute('data-state', 'offline');
+            badgeText.textContent = 'Offline';
+          }
+        }
+
+        if (readParam('status') === 'failed') {
+          statusMessage.textContent =
+            'Still unable to connect. Check Wi-Fi or mobile data and try again.';
+        }
+
+        updateOnlineHint();
+        window.addEventListener('online', updateOnlineHint);
+        window.addEventListener('offline', updateOnlineHint);
+        window.addEventListener('pagehide', clearRetryTimer);
+        window.addEventListener('beforeunload', clearRetryTimer);
+
+        retryButton.addEventListener('click', function () {
+          if (retrying) return;
+          clearRetryTimer();
+          retrying = true;
+          retryButton.disabled = true;
+          retryButton.textContent = 'Connecting...';
+          retryButton.setAttribute('aria-busy', 'true');
+
+          var target = resolveRetryTarget();
+          window.location.replace(target);
+
+          retryTimerId = window.setTimeout(function () {
+            resetRetryButton(true);
+          }, 8000);
+        });
+      })();
+    </script>
+  </body>
+</html>

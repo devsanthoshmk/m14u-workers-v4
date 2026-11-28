@@ -1,0 +1,458 @@
+name: Sync youtubei.js and sign v2 resolver
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'src/lib/modules/resolver/**'
+      - 'scripts/resolver-*'
+
+concurrency:
+  group: youtubei-sync-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync-and-test:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # contents: write is required for peter-evans/create-pull-request to push the chore/youtubei-sync PR branch;
+    # this job never pushes to main and never receives signing secrets.
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Check npm for newer youtubei.js release
+        id: check-version
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+
+            const pkgPath = "package.json";
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            const rawCurrent = String(pkg.dependencies?.["youtubei.js"] ?? "");
+            const current = rawCurrent.replace(/^[~^=v]+/, "");
+            const currentMatch = /^(\d+)\.(\d+)\.(\d+)$/.exec(current);
+            if (!currentMatch) {
+              throw new Error(`Unexpected package.json youtubei.js version: ${rawCurrent}`);
+            }
+
+            const latest = execFileSync("npm", ["view", "youtubei.js", "dist-tags.latest"], {
+              encoding: "utf8",
+            }).trim();
+            const latestMatch = /^(\d+)\.(\d+)\.(\d+)$/.exec(latest);
+            if (!latestMatch) {
+              throw new Error(`Unexpected npm dist-tags.latest for youtubei.js: ${latest}`);
+            }
+
+            const cur = currentMatch.slice(1).map(Number);
+            const lat = latestMatch.slice(1).map(Number);
+            const isNewer =
+              lat[0] > cur[0] ||
+              (lat[0] === cur[0] && lat[1] > cur[1]) ||
+              (lat[0] === cur[0] && lat[1] === cur[1] && lat[2] > cur[2]);
+            const majorBump = lat[0] > cur[0];
+
+            if (isNewer) {
+              pkg.dependencies["youtubei.js"] = latest;
+              fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+            }
+
+            const prTitle = majorBump
+              ? `[MAJOR] chore(deps): update youtubei.js to ${latest}`
+              : `chore(deps): update youtubei.js to ${latest}`;
+            const out = process.env.GITHUB_OUTPUT;
+            fs.appendFileSync(
+              out,
+              [
+                `changed=${isNewer}`,
+                `current=${current}`,
+                `latest=${latest}`,
+                `major_bump=${majorBump}`,
+                `pr_title=${prTitle}`,
+              ].join("\n") + "\n",
+            );
+            console.log(`youtubei.js current=${current} latest=${latest} changed=${isNewer} major=${majorBump}`);
+          '
+
+      - name: Install dependencies (update lockfile when youtubei.js changed)
+        run: |
+          if [ "${{ steps.check-version.outputs.changed }}" = "true" ]; then
+            pnpm install --no-frozen-lockfile --ignore-scripts
+          else
+            pnpm install --frozen-lockfile --ignore-scripts
+          fi
+
+      - name: Run deterministic checks and build
+        if: steps.check-version.outputs.changed == 'true' || github.event_name != 'schedule'
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test:ui
+          pnpm test:catalog
+          pnpm test:resolver
+          pnpm test:resolver:smoke
+          pnpm build
+
+      - name: Run deterministic resolver smoke check on schedule
+        if: steps.check-version.outputs.changed != 'true' && github.event_name == 'schedule'
+        run: pnpm test:resolver:smoke
+
+      - name: Run advisory live YouTube smoke probe
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        continue-on-error: true
+        run: |
+          SUMMARY_PATH="${RUNNER_TEMP}/live-smoke-summary.md"
+          set +e
+          node scripts/resolver-smoke.mjs --live --summary-file "$SUMMARY_PATH"
+          STATUS=$?
+          set -e
+          if [ -f "$SUMMARY_PATH" ]; then
+            cat "$SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+            rm -f "$SUMMARY_PATH"
+          fi
+          exit "$STATUS"
+
+      - name: Open or update youtubei.js PR
+        if: steps.check-version.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          branch: chore/youtubei-sync
+          base: main
+          delete-branch: true
+          add-paths: |
+            package.json
+            pnpm-lock.yaml
+          commit-message: ${{ steps.check-version.outputs.pr_title }}
+          title: ${{ steps.check-version.outputs.pr_title }}
+          body: |
+            Automated `youtubei.js` update from `${{ steps.check-version.outputs.current }}` to `${{ steps.check-version.outputs.latest }}`.
+            ${{ steps.check-version.outputs.major_bump == 'true' && '> **Warning:** Major version bump (`[MAJOR]`) — review breaking API or decipher changes before merging.' || '' }}
+
+            ### Deterministic Verification
+            - `pnpm lint`
+            - `pnpm typecheck`
+            - `pnpm test:ui`
+            - `pnpm test:catalog`
+            - `pnpm test:resolver`
+            - `pnpm test:resolver:smoke`
+            - `pnpm build`
+
+            See the workflow run summary for advisory `--live` smoke probe diagnostics (if triggered via `schedule` or `workflow_dispatch`).
+
+  sign-v2-bundle:
+    needs: sync-and-test
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.RESOLVER_V2_KEY_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check signing key configuration
+        id: signing-config
+        env:
+          RESOLVER_V2_KEY_ID: ${{ vars.RESOLVER_V2_KEY_ID }}
+          RESOLVER_V2_PRIVATE_KEY: ${{ secrets.RESOLVER_V2_PRIVATE_KEY }}
+        run: |
+          if [ -n "$RESOLVER_V2_KEY_ID" ] && [ -n "$RESOLVER_V2_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "RESOLVER_V2_PRIVATE_KEY secret is not configured; skipping v2 bundle signing." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Checkout repository
+        if: steps.signing-config.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up pnpm
+        if: steps.signing-config.outputs.enabled == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
+      - name: Set up Node.js
+        if: steps.signing-config.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.signing-config.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify resolver signing and smoke tests
+        if: steps.signing-config.outputs.enabled == 'true'
+        run: |
+          pnpm test:resolver
+          pnpm test:resolver:smoke
+
+      - name: Compute monotonic v2 bundle version
+        if: steps.signing-config.outputs.enabled == 'true'
+        id: version
+        env:
+          RESOLVER_V2_MANIFEST_URL: ${{ vars.RESOLVER_V2_MANIFEST_URL || secrets.RESOLVER_V2_MANIFEST_URL }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifestUrl = process.env.RESOLVER_V2_MANIFEST_URL || "https://m14u.pages.dev/resolvers/v2/manifest.json";
+            const runNumber = Number(process.env.GITHUB_RUN_NUMBER || "1");
+            (async () => {
+              let remoteVersion = 0;
+              const res = await fetch(manifestUrl, { signal: AbortSignal.timeout(10000) });
+              if (res.status === 404) {
+                console.log("Remote manifest returned HTTP 404; initializing monotonic version from 1.");
+              } else if (!res.ok) {
+                throw new Error(`Remote manifest returned HTTP ${res.status}`);
+              } else {
+                const data = await res.json();
+                if (!Number.isSafeInteger(data?.version) || data.version < 1) {
+                  throw new Error(`Invalid remote manifest version: ${JSON.stringify(data?.version)}`);
+                }
+                remoteVersion = data.version;
+              }
+              let localVersion = 0;
+              try {
+                const local = JSON.parse(fs.readFileSync("public/resolvers/v2/manifest.json", "utf8"));
+                if (Number.isSafeInteger(local?.version) && local.version >= 1) localVersion = local.version;
+              } catch { /* No local manifest yet. */ }
+              const nextVersion = Math.max(remoteVersion + 1, localVersion + 1, Number.isSafeInteger(runNumber) ? runNumber : 1, 1);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
+              console.log(`Computed monotonic v2 bundle version=${nextVersion} (remote=${remoteVersion}, run=${runNumber})`);
+            })().catch((err) => { console.error(err); process.exit(1); });
+          '
+
+      - name: Build and sign v2 resolver bundle
+        if: steps.signing-config.outputs.enabled == 'true'
+        env:
+          RESOLVER_V2_KEY_ID: ${{ vars.RESOLVER_V2_KEY_ID }}
+          RESOLVER_V2_PRIVATE_KEY: ${{ secrets.RESOLVER_V2_PRIVATE_KEY }}
+          BUNDLE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          umask 077
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const crypto = require("node:crypto");
+            const { execFileSync } = require("node:child_process");
+
+            const runnerTemp = process.env.RUNNER_TEMP;
+            if (!runnerTemp) throw new Error("RUNNER_TEMP is not set");
+            const keyId = process.env.RESOLVER_V2_KEY_ID;
+            const rawKey = process.env.RESOLVER_V2_PRIVATE_KEY || "";
+            const version = process.env.BUNDLE_VERSION;
+            const normalizedPem = rawKey.includes("\\n") && !rawKey.includes("\n")
+              ? rawKey.replace(/\\n/g, "\n")
+              : rawKey;
+
+            const keyDir = fs.mkdtempSync(path.join(runnerTemp, "m14u-v2-key-"));
+            const keyFile = path.join(keyDir, "key.pem");
+            try {
+              fs.writeFileSync(keyFile, normalizedPem, { mode: 0o600 });
+              fs.chmodSync(keyFile, 0o600);
+              execFileSync(
+                process.execPath,
+                ["scripts/build-resolver.mjs", "--v2", version, keyFile, "dist-resolver/resolvers/v2", keyId],
+                { stdio: "inherit" },
+              );
+
+              const manifest = JSON.parse(fs.readFileSync("dist-resolver/resolvers/v2/manifest.json", "utf8"));
+              const canonical = [
+                "m14u-resolver-v2",
+                manifest.version,
+                manifest.abi,
+                manifest.keyId,
+                manifest.artifactPath,
+                manifest.byteLength,
+                manifest.sha256Hex,
+              ].join("\n");
+              const pubKey = crypto.createPublicKey(crypto.createPrivateKey(normalizedPem));
+              const valid = crypto.verify(
+                "sha256",
+                Buffer.from(canonical),
+                { key: pubKey, dsaEncoding: "ieee-p1363" },
+                Buffer.from(manifest.signature, "base64"),
+              );
+              if (!valid) throw new Error("Generated manifest signature failed verification against signing key");
+            } finally {
+              fs.rmSync(keyDir, { recursive: true, force: true });
+            }
+          '
+
+      - name: Clean up temporary signing key
+        if: always() && steps.signing-config.outputs.enabled == 'true'
+        run: rm -rf "${RUNNER_TEMP}"/m14u-v2-key-*
+
+      - name: Verify v2 bundle SHA-256 and pinned signature
+        if: steps.signing-config.outputs.enabled == 'true'
+        env:
+          RESOLVER_V2_KEY_ID: ${{ vars.RESOLVER_V2_KEY_ID }}
+          RESOLVER_V2_PUBLIC_KEYS: ${{ vars.RESOLVER_V2_PUBLIC_KEYS || secrets.RESOLVER_V2_PUBLIC_KEYS }}
+          BUNDLE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const assert = require("node:assert/strict");
+            const crypto = require("node:crypto");
+            const fs = require("node:fs");
+
+            const version = Number(process.env.BUNDLE_VERSION);
+            const keyId = process.env.RESOLVER_V2_KEY_ID;
+            const manifest = JSON.parse(fs.readFileSync("dist-resolver/resolvers/v2/manifest.json", "utf8"));
+            const artifactPath = `dist-resolver/resolvers/v2/${version}/resolver.js`;
+            const artifact = fs.readFileSync(artifactPath);
+
+            assert.equal(manifest.version, version);
+            assert.equal(manifest.abi, "androidx-js-1");
+            assert.equal(manifest.keyId, keyId);
+            assert.equal(manifest.artifactPath, `/resolvers/v2/${version}/resolver.js`);
+            assert.equal(manifest.byteLength, artifact.byteLength);
+            assert.ok(artifact.byteLength > 0 && artifact.byteLength < 3_000_000);
+
+            const digest = crypto.createHash("sha256").update(artifact).digest("hex");
+            assert.equal(manifest.sha256Hex, digest);
+            assert.ok(typeof manifest.signature === "string" && manifest.signature.length > 0);
+
+            const rawPublicKeys = (process.env.RESOLVER_V2_PUBLIC_KEYS || "").trim();
+            if (rawPublicKeys) {
+              let map = {};
+              if (rawPublicKeys.startsWith("{")) {
+                map = JSON.parse(rawPublicKeys);
+              } else {
+                for (const entry of rawPublicKeys.split(",")) {
+                  const idx = entry.indexOf("=");
+                  if (idx > 0) {
+                    map[entry.slice(0, idx).trim()] = entry.slice(idx + 1).trim();
+                  }
+                }
+              }
+              const spkiBase64 = map[keyId];
+              assert.ok(spkiBase64, `Pinned RESOLVER_V2_PUBLIC_KEYS missing entry for ${keyId}`);
+              const publicKey = crypto.createPublicKey({
+                key: Buffer.from(spkiBase64, "base64"),
+                format: "der",
+                type: "spki",
+              });
+              const canonical = [
+                "m14u-resolver-v2",
+                manifest.version,
+                manifest.abi,
+                manifest.keyId,
+                manifest.artifactPath,
+                manifest.byteLength,
+                manifest.sha256Hex,
+              ].join("\n");
+              const verified = crypto.verify(
+                "sha256",
+                Buffer.from(canonical),
+                { key: publicKey, dsaEncoding: "ieee-p1363" },
+                Buffer.from(manifest.signature, "base64"),
+              );
+              assert.equal(verified, true, "Manifest signature failed pinned public key verification");
+            }
+            console.log(`Verified v2 resolver bundle v${version}: ${artifact.byteLength} bytes, sha256=${digest}`);
+          '
+
+      - name: Check if public/resolvers/v2 already matches built bundle
+        if: steps.signing-config.outputs.enabled == 'true'
+        id: bundle-diff
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const built = JSON.parse(fs.readFileSync("dist-resolver/resolvers/v2/manifest.json", "utf8"));
+            let unchanged = false;
+            try {
+              const committed = JSON.parse(fs.readFileSync("public/resolvers/v2/manifest.json", "utf8"));
+              unchanged =
+                committed?.sha256Hex === built.sha256Hex &&
+                committed?.keyId === built.keyId &&
+                fs.existsSync(`public${committed.artifactPath}`);
+            } catch { /* Missing or unreadable committed manifest. */ }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `unchanged=${unchanged}\n`);
+            console.log(`Committed public/resolvers/v2 unchanged=${unchanged}`);
+          '
+
+      - name: Upload resolvers-v2-bundle artifact
+        if: steps.signing-config.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolvers-v2-bundle
+          path: dist-resolver/resolvers/v2
+          if-no-files-found: error
+
+      - name: Check optional Cloudflare Pages deployment configuration
+        if: steps.signing-config.outputs.enabled == 'true'
+        id: pages-config
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit updated public/resolvers/v2 for Pages GitHub integration
+        if: >-
+          steps.signing-config.outputs.enabled == 'true' &&
+          steps.pages-config.outputs.enabled != 'true' &&
+          steps.bundle-diff.outputs.unchanged != 'true'
+        env:
+          BUNDLE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rm -rf public/resolvers/v2
+          mkdir -p public/resolvers/v2
+          cp -a dist-resolver/resolvers/v2/. public/resolvers/v2/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- public/resolvers/v2
+          git commit -m "chore(resolver): publish signed v2 bundle v${BUNDLE_VERSION}"
+          git push origin HEAD:main
+
+      - name: Stage Pages output with /resolvers/v2/ and deploy
+        if: steps.signing-config.outputs.enabled == 'true' && steps.pages-config.outputs.enabled == 'true' && steps.bundle-diff.outputs.unchanged != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'm14u' }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+        run: |
+          pnpm build
+          rm -rf dist-pages
+          cp -a dist dist-pages
+          mkdir -p dist-pages/resolvers/v2
+          cp -a dist-resolver/resolvers/v2/. dist-pages/resolvers/v2/
+          npx --yes wrangler@4.54.0 pages deploy dist-pages --project-name="$CLOUDFLARE_PAGES_PROJECT" --branch=main

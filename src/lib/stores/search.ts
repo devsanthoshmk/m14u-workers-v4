@@ -7,6 +7,8 @@ import { useListeningPreferences } from '@/stores/listeningPreferences';
 import { rankSongsByLanguage } from '@/lib/utils/musicLanguage';
 import { searchJioSaavn } from '@/services/jiosaavn';
 import { findMoreByArtist, findSaavnAlternatives, findSaavnMatch, findYouTubeSong } from '@/services/saavnDiscovery';
+import { useSaavnFallbackStore } from '@/services/saavnFallback';
+import { anyAbortSignal, timeoutAbortSignal } from '@/lib/modules/resolver/abortSignal';
 
 const API_BASE = `${API_BASE_URL}/api`;
 let activeSearch: AbortController | undefined;
@@ -35,7 +37,9 @@ interface SearchState {
 
 async function enrichSaavnSearch(seedLookup: ReturnType<typeof findYouTubeSong>, results: TrackItem[], request: AbortController) {
   const { setState } = useSearchStore;
-  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12000)]);
+  const timeout = timeoutAbortSignal(12000);
+  const combined = anyAbortSignal([request.signal, timeout.signal]);
+  const signal = combined.signal;
   let discovery: SearchDiscovery | undefined;
   try {
     const seed = await seedLookup;
@@ -48,19 +52,34 @@ async function enrichSaavnSearch(seedLookup: ReturnType<typeof findYouTubeSong>,
     }
     discovery = { song: seed, alternatives: [], loading: true };
     setState({ discovery });
-    const recommendationsSignal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
-    const alternatives = await findSaavnAlternatives(seed, results, recommendationsSignal).catch(() => []);
+    const recTimeout = timeoutAbortSignal(10000);
+    const recCombined = anyAbortSignal([request.signal, recTimeout.signal]);
+    let alternatives: TrackItem[] = [];
+    try {
+      alternatives = await findSaavnAlternatives(seed, results, recCombined.signal).catch(() => []);
+    } finally {
+      recCombined.cleanup();
+      recTimeout.cleanup();
+    }
     if (request.signal.aborted) return;
     if (alternatives.length) {
       discovery = { ...discovery, alternatives };
     } else {
-      const artistSignal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
-      const tracks = await findMoreByArtist(seed, results, artistSignal);
-      if (!artistSignal.aborted) discovery = { ...discovery, alternatives: tracks, sameArtist: true };
+      const artistTimeout = timeoutAbortSignal(5000);
+      const artistCombined = anyAbortSignal([request.signal, artistTimeout.signal]);
+      try {
+        const tracks = await findMoreByArtist(seed, results, artistCombined.signal);
+        if (!artistCombined.signal.aborted) discovery = { ...discovery, alternatives: tracks, sameArtist: true };
+      } finally {
+        artistCombined.cleanup();
+        artistTimeout.cleanup();
+      }
     }
   } catch {
     // Discovery is optional; don't replace the primary search with an error.
   } finally {
+    combined.cleanup();
+    timeout.cleanup();
     if (discovery && !request.signal.aborted) setState({ discovery: { ...discovery, loading: false } });
   }
 }
@@ -80,10 +99,25 @@ export async function searchWithResults(query: string, filter = 'all'): Promise<
   setState({ isLoading: true, error: null, results: [], discovery: null, query, filter: filter || 'all' });
 
   try {
+    const fallback = isNative() ? useSaavnFallbackStore.getState() : null;
+    if (fallback && fallback.enabled && fallback.mode === 'jiosaavn-fallback') {
+      void fallback.maybeProbeRecovery();
+      const saavnResults = await searchJioSaavn(query, request.signal, undefined, { allowNative: true });
+      if (request.signal.aborted) return;
+      const results = rankSongsByLanguage(saavnResults, targetLanguages, query);
+      setState({ results, isLoading: false });
+      return results;
+    }
     if (!isNative() && useCatalogStore.getState().provider === 'jiosaavn') {
       const primary = searchJioSaavn(query, request.signal);
-      const seed = findYouTubeSong(query, AbortSignal.any([request.signal, AbortSignal.timeout(8000)]))
-        .catch(() => undefined);
+      const seedTimeout = timeoutAbortSignal(8000);
+      const seedCombined = anyAbortSignal([request.signal, seedTimeout.signal]);
+      const seed = findYouTubeSong(query, seedCombined.signal)
+        .catch(() => undefined)
+        .finally(() => {
+          seedCombined.cleanup();
+          seedTimeout.cleanup();
+        });
       const results = rankSongsByLanguage(await primary, targetLanguages, query);
       if (request.signal.aborted) return;
       setState({ results, isLoading: false });
@@ -123,9 +157,16 @@ export async function getSuggestionsWithResults(query: string): Promise<string[]
   const request = new AbortController();
   activeSuggestions = request;
   try {
+    const fallback = isNative() ? useSaavnFallbackStore.getState() : null;
+    const useAndroidSaavnFallback = Boolean(fallback && fallback.enabled && fallback.mode === 'jiosaavn-fallback');
+    if (useAndroidSaavnFallback) {
+      void fallback!.maybeProbeRecovery();
+    }
     const params = new URLSearchParams({ q: query, music: 'true' });
     if (isNative()) params.set('catalog', 'youtube');
-    const data = !isNative() && useCatalogStore.getState().provider === 'jiosaavn'
+    const data = useAndroidSaavnFallback
+      ? [...new Set((await searchJioSaavn(query, request.signal, 8, { allowNative: true })).map(track => track.title))].slice(0, 8)
+      : !isNative() && useCatalogStore.getState().provider === 'jiosaavn'
       ? [...new Set((await searchJioSaavn(query, request.signal)).map(track => track.title))].slice(0, 8)
       : await fetch(`${API_BASE}/search-suggestions?${params}`, { signal: request.signal }).then(res => {
           if (!res.ok) throw new Error('Suggestions failed');

@@ -2,3 +2,9 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+/resolvers/v2/manifest.json
+  Cache-Control: no-store, no-cache
+
+/resolvers/v2/*/resolver.js
+  Cache-Control: public, max-age=31536000, immutable

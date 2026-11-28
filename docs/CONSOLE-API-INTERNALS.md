@@ -10,8 +10,9 @@ window.m14u
         ├── usePlayerStore.getState()  — playback, queue, favorites, history
         ├── useUIStore.getState()      — panels, sidebar
         ├── useSearchStore.getState()  — search results, suggestions
-        ├── useListStore.getState()    — album/artist/playlist loading
-        ├── useCatalogStore.getState() — browser catalog selection and settings dialog
+        ├── useListStore.getState()          — album/artist/playlist loading
+        ├── useCatalogStore.getState()       — browser catalog selection and settings dialog
+        ├── useSaavnFallbackStore.getState() — Android YouTube-to-JioSaavn fallback state and recovery probe
         ├── routerRef                  — React Router navigate/location
         ├── logger                     — structured log buffer
         ├── wait                       — poll-based waiters
@@ -61,6 +62,7 @@ src/lib/testing/
 - **`search()` and `suggest()` return their own request's results.** If a request is canceled before completing, its command resolves to `[]`, even if another request has since populated the store. Search and suggestions cancel independently; Clear cancels both.
 - **Playback commands await the store action, not an observed UI state.** Store actions can report failures in state instead of rejecting. Use `wait.*` and `assert.*` to check changes you expect to observe.
 - **Queue commands use zero-based integer indices.** `queue.remove(index)` translates the index to a store `queueId`.
+- **`fallback.*` wraps `useSaavnFallbackStore.getState()`.** `fallback.status()` projects store fields synchronously (`recentFailureCount` from `recentFailures.length`); `fallback.setEnabled(enabled)` validates a strict boolean before updating persisted opt-out state via `act()`; `fallback.retryYouTube()` awaits the recovery probe inside `actAsync()` and returns `false` on non-native web builds or when fallback is disabled.
 - **Logging must be explicitly enabled** with `m14u.log.enable()`. While disabled, entries aren't buffered, but errors still update `lastError()` and notify `onError()` listeners. The function returned by `onError()` unsubscribes that registration. Use `log.clear()` to clear the buffer and `clearErrors()` to reset `lastError()`.
 - **`assert.*` throws on failure.** In console scripts, wrap in try/catch or let the error propagate to stop the script.
 

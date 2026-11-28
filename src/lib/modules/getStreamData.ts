@@ -5,6 +5,8 @@ import StreamExtractor from '@/plugins/StreamExtractor';
 import { resolveWithLiveBundle } from './liveResolver';
 import { API_BASE_URL } from '@/utils/constants';
 import { isJioSaavnTrack, jioSaavnAudioUrl } from '@/services/jiosaavn';
+import { useSaavnFallbackStore } from '@/services/saavnFallback';
+import { anyAbortSignal, timeoutAbortSignal } from './resolver/abortSignal';
 
 const instances = [
   "https://invidious.fdn.fr",
@@ -14,7 +16,7 @@ const instances = [
   "https://lekker.gay"
 ];
 
-const streamCache = new Map<string, { data: Invidious; timestamp: number }>();
+const streamCache = new Map<string, { data: Invidious; timestamp: number; validUntil?: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 const PROVIDER_TIMEOUT = 3000;
 
@@ -26,6 +28,47 @@ export interface Invidious {
   [key: string]: unknown;
 }
 
+export function computeStreamValidUntil(formats: AudioStream[], now: number = Date.now()): number {
+  const playable = formats.filter(
+    (stream): stream is AudioStream => Boolean(stream?.type?.startsWith('audio/') && stream.url),
+  );
+  if (!playable.length) throw new Error('No playable audio streams');
+  return Math.min(now + CACHE_TTL, ...playable.map(stream => {
+    try {
+      const expiry = Number(new URL(stream.url).searchParams.get('expire'));
+      return Number.isFinite(expiry) && expiry > 0 ? expiry * 1000 - 30_000 : now + 60_000;
+    } catch {
+      return now + 60_000;
+    }
+  }));
+}
+
+function cacheValid(entry: { timestamp: number; validUntil?: number }) {
+  return Date.now() < (entry.validUntil ?? entry.timestamp + CACHE_TTL);
+}
+
+async function withDeadline<T>(ms: number, parent: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>) {
+  const stop = new AbortController();
+  const timeout = timeoutAbortSignal(ms);
+  const combined = anyAbortSignal([stop.signal, timeout.signal, parent]);
+  const signal = combined.signal;
+  let onAbort = () => {};
+  const deadline = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    signal.throwIfAborted();
+    return await Promise.race([deadline, run(signal)]);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    combined.cleanup();
+    timeout.cleanup();
+    stop.abort();
+  }
+}
+
 export default async function getStreamData(
   id: string,
   prefetch: boolean = false,
@@ -34,21 +77,29 @@ export default async function getStreamData(
 
   signal?.throwIfAborted();
   if (isJioSaavnTrack(id)) {
-    const url = jioSaavnAudioUrl(id);
-    return url ? { title: '', adaptiveFormats: [{ url, type: 'audio/mp4', bitrate: '', encoding: 'aac' }] }
+    const native = isNative();
+    const allowNative = native && useSaavnFallbackStore.getState().enabled;
+    const url = jioSaavnAudioUrl(id, allowNative ? { allowNative: true } : undefined);
+    return url
+      ? {
+          title: '',
+          adaptiveFormats: [{ url, type: 'audio/mp4', bitrate: native ? '320000' : '', encoding: 'aac' }],
+        }
       : { error: 'Playback unavailable', message: 'JioSaavn playback is unavailable here' };
   }
   const cached = streamCache.get(id);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (cached && cacheValid(cached)) {
     return cached.data;
   }
+  if (cached) streamCache.delete(id);
 
   if (/^(archive|commons|audius|openverse|freetouse):/.test(id)) {
+    const timeout = timeoutAbortSignal(7000);
+    const combined = signal ? anyAbortSignal([signal, timeout.signal]) : undefined;
     try {
-      const timeout = AbortSignal.timeout(7000);
       const params = new URLSearchParams({ id });
       const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/stream?${params}`, {
-        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        signal: combined ? combined.signal : timeout.signal,
       });
       if (!response.ok) throw new Error('Track unavailable');
       const data: Invidious = await response.json();
@@ -61,59 +112,85 @@ export default async function getStreamData(
     } catch {
       signal?.throwIfAborted();
       return { error: 'Playback unavailable', message: 'The music API could not provide playable audio for this track' };
+    } finally {
+      combined?.cleanup();
+      timeout.cleanup();
     }
   }
 
   if (isNative()) {
-    const race = new AbortController();
-    const nativeSignal = AbortSignal.any([race.signal, AbortSignal.timeout(6500), ...(signal ? [signal] : [])]);
-    let rejectNative: () => void = () => {};
-    const nativeDeadline = new Promise<never>((_, reject) => {
-      rejectNative = () => reject(nativeSignal.reason);
-      if (nativeSignal.aborted) rejectNative();
-      else nativeSignal.addEventListener('abort', rejectNative, { once: true });
-    });
     try {
-      nativeSignal.throwIfAborted();
-      const native = StreamExtractor.getStreamData({ videoId: id }).then(data => {
-        if (!data.adaptiveFormats?.some(stream => stream.type.startsWith('audio/') && stream.url)) {
-          throw new Error('Native extractor returned no audio streams');
+      const { data, path } = await withDeadline(6500, signal, async nativeSignal => {
+        const candidates: Promise<{ data: Invidious; path: string }>[] = [];
+        if (import.meta.env.VITE_YOUTUBE_JS_RESOLVER !== 'false') {
+          candidates.push((async () => {
+            const [{ resolveYouTubeStreams, configureYouTubeEvaluator }, { capacitorFetch, evaluatePlayerScript }] = await Promise.all([
+              import('./resolver/core'), import('./resolver/capacitorTransport'),
+            ]);
+            configureYouTubeEvaluator(evaluatePlayerScript);
+            return { data: await resolveYouTubeStreams(id, { fetch: capacitorFetch, signal: nativeSignal }), path: 'Server JS' };
+          })());
         }
-        return data as unknown as Invidious;
+        if (import.meta.env.VITE_RESOLVER_MANIFEST_URL && import.meta.env.VITE_RESOLVER_PUBLIC_KEY) {
+          candidates.push(resolveWithLiveBundle(id, nativeSignal).then(data => {
+            if (!data) throw new Error('No live resolver result');
+            return { data, path: 'signed live bundle' };
+          }));
+        }
+        return Promise.any(candidates);
       });
-      const live = resolveWithLiveBundle(id, nativeSignal).then(data => {
-        if (!data) throw new Error('Live resolver returned no audio streams');
-        return data;
-      });
-      const data = await Promise.race([Promise.any([native, live]), nativeDeadline]);
       signal?.throwIfAborted();
-      streamCache.set(id, { data, timestamp: Date.now() });
+      const now = Date.now();
+      const validUntil = computeStreamValidUntil(data.adaptiveFormats, now);
+      if (validUntil <= now) throw new Error('Expired audio formats');
+      streamCache.set(id, { data, timestamp: now, validUntil });
+      console.info(`Android resolver succeeded: ${path}`);
       return data;
     } catch (error) {
       signal?.throwIfAborted();
-      console.warn('Android extraction failed, falling back to Invidious', error);
-    } finally {
-      nativeSignal.removeEventListener('abort', rejectNative);
-      race.abort();
+      if (prefetch) {
+        return { error: 'Prefetch failed', message: error instanceof Error ? error.message : 'Android JS resolver unavailable' };
+      }
+      console.warn('Android JS resolver unavailable, falling back to NewPipe');
+    }
+    try {
+      const data = await withDeadline(6500, signal, () => StreamExtractor.getStreamData({ videoId: id }));
+      signal?.throwIfAborted();
+      if (!data.adaptiveFormats?.some(stream => stream.type.startsWith('audio/') && stream.url)) {
+        throw new Error('Native extractor returned no audio streams');
+      }
+      streamCache.set(id, { data, timestamp: Date.now() });
+      console.info('Android resolver succeeded: NewPipe');
+      return data;
+    } catch {
+      signal?.throwIfAborted();
+      console.warn('Android NewPipe resolver unavailable, falling back to Invidious');
     }
   }
 
   const fetchData = async (proxy: string): Promise<Invidious> => {
-    const timeout = AbortSignal.timeout(PROVIDER_TIMEOUT);
-    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    const res = await fetch(`${proxy}/api/v1/videos/${encodeURIComponent(id)}?fields=adaptiveFormats,title`, { signal: requestSignal });
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-    const data = await res.json();
+    const timeout = timeoutAbortSignal(PROVIDER_TIMEOUT);
+    const combined = signal ? anyAbortSignal([signal, timeout.signal]) : undefined;
+    try {
+      const res = await fetch(`${proxy}/api/v1/videos/${encodeURIComponent(id)}?fields=adaptiveFormats,title`, {
+        signal: combined ? combined.signal : timeout.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
 
-    if (!data || !('adaptiveFormats' in data) || !Array.isArray(data.adaptiveFormats)) {
-      throw new Error(data?.error || 'Invalid response: adaptiveFormats missing or not an array');
+      if (!data || !('adaptiveFormats' in data) || !Array.isArray(data.adaptiveFormats)) {
+        throw new Error(data?.error || 'Invalid response: adaptiveFormats missing or not an array');
+      }
+
+      if (!data.adaptiveFormats.some((f: AudioStream) => f?.type?.startsWith('audio/') && f.url)) {
+        throw new Error('Invalid response: no audio streams found');
+      }
+
+      return { ...data, streamProxy: proxy };
+    } finally {
+      combined?.cleanup();
+      timeout.cleanup();
     }
-
-    if (!data.adaptiveFormats.some((f: AudioStream) => f?.type?.startsWith('audio/') && f.url)) {
-      throw new Error('Invalid response: no audio streams found');
-    }
-
-    return { ...data, streamProxy: proxy };
   };
 
   const state = usePlayerStore.getState();
@@ -124,6 +201,7 @@ export default async function getStreamData(
     try {
       const data = await fetchData(proxy);
       streamCache.set(id, { data, timestamp: Date.now() });
+      if (isNative()) console.info('Android resolver succeeded: Invidious');
       return data;
     } catch (e) {
       if (signal?.aborted) signal.throwIfAborted();
@@ -138,6 +216,7 @@ export default async function getStreamData(
     })));
     usePlayerStore.setState({ proxy: inst });
     streamCache.set(id, { data, timestamp: Date.now() });
+    if (isNative()) console.info('Android resolver succeeded: Invidious');
     return data;
   } catch {
     if (signal?.aborted) signal.throwIfAborted();
@@ -151,7 +230,7 @@ export function prefetchNextSong() {
   if (nextIndex < state.queue.length) {
     const nextSong = state.queue[nextIndex]?.song;
     const cached = nextSong && streamCache.get(nextSong.id);
-    if (nextSong && (!cached || Date.now() - cached.timestamp >= CACHE_TTL)) {
+    if (nextSong && (!cached || !cacheValid(cached))) {
       void getStreamData(nextSong.id, true).catch(() => {});
     }
   }

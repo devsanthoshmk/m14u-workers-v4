@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 import type { TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
 import { saavnId, startSaavnQueue } from './saavnQueue';
+import { anyAbortSignal, timeoutAbortSignal } from '@/lib/modules/resolver/abortSignal';
 
 const supportedSeed = /^(?:audius:[A-Za-z0-9]{1,24}|openverse:[a-f0-9-]{36})$/i;
 
@@ -30,8 +31,10 @@ export async function playCatalogSelection(songs: TrackItem[], index: number) {
     const stopCatalogWatch = useCatalogStore.subscribe(cancelIfStale);
     const recommendations = (async () => {
         let tracks: TrackItem[] = [];
+        const timeout = timeoutAbortSignal(12_000);
+        const combined = anyAbortSignal([request.signal, timeout.signal]);
         try {
-            const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
+            const signal = combined.signal;
             const params = new URLSearchParams({ id: seed.id });
             const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/open-recommendations?${params}`, { signal });
             if (response.ok) {
@@ -40,6 +43,8 @@ export async function playCatalogSelection(songs: TrackItem[], index: number) {
             }
         } catch { /* The current list is still available if recommendations fail. */ }
         finally {
+            combined.cleanup();
+            timeout.cleanup();
             stopPlayerWatch();
             stopCatalogWatch();
         }

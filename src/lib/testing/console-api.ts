@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUIStore } from '@/stores/uiStore';
 import { getSuggestionsWithResults, searchWithResults, useSearchStore } from '@/lib/stores/search';
@@ -13,11 +14,13 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useListeningPreferences } from '@/stores/listeningPreferences';
 import { normalizeMusicLanguage } from '@/lib/utils/musicLanguage';
 import { playCatalogSelection } from '@/services/catalogPlayback';
+import { useSaavnFallbackStore } from '@/services/saavnFallback';
 
 const player = () => usePlayerStore.getState();
 const ui = () => useUIStore.getState();
 const search = () => useSearchStore.getState();
 const list = () => useListStore.getState();
+const fallback = () => useSaavnFallbackStore.getState();
 
 let _lastError: LogEntry | null = null;
 
@@ -400,7 +403,48 @@ const api = {
     async channel(id: string) { return actAsync('load.channel', () => list().loadChannel(id), id); },
   },
 
+  // --- Android Fallback ---
+  fallback: {
+    status() {
+      const f = fallback();
+      return {
+        enabled: f.enabled,
+        mode: f.mode,
+        cooldownUntil: f.cooldownUntil,
+        backoffStep: f.backoffStep,
+        probing: f.probing,
+        recentFailureCount: f.recentFailures.length,
+        activeTrackNotice: f.activeTrackNotice,
+        sessionBannerVisible: f.sessionBannerVisible,
+        lastError: f.lastError,
+      };
+    },
+    async retryYouTube() {
+      return actAsync('fallback.retryYouTube', () => fallback().retryYouTube());
+    },
+    setEnabled(enabled: boolean) {
+      return act('fallback.setEnabled', () => {
+        if (typeof enabled !== 'boolean') {
+          throw new Error(`fallback.setEnabled: expected boolean, got ${typeof enabled}`);
+        }
+        fallback().setEnabled(enabled);
+        return fallback().enabled;
+      }, enabled);
+    },
+    reset() {
+      return act('fallback.reset', () => fallback().reset());
+    },
+  },
+
   // --- Meta ---
+  diagnostics() {
+    return {
+      origin: window.location.origin,
+      isNative: isNative(),
+      platform: Capacitor.getPlatform(),
+      userAgent: window.navigator.userAgent,
+    };
+  },
   help() {
     const cmds = [
       'route(path)', 'currentRoute()', 'catalog(provider)', 'catalogSettings(open?)', 'musicLanguage(language?)', 'musicLanguages(languages?)', 'globalTopFilter(language?)', 'completeListeningSetup()', 'search(q, filter?)', 'suggest(q)', 'clearSearch()',
@@ -425,7 +469,8 @@ const api = {
       'highlight(sel, label?)', 'highlightButton(text)', 'clearHighlights()',
       'state.player()', 'state.ui()', 'state.search()', 'state.list()',
       'load.album(id)', 'load.artist(id)', 'load.playlist(id, all?)', 'load.channel(id)',
-      'help()', 'version()',
+      'fallback.status()', 'fallback.retryYouTube()', 'fallback.setEnabled(enabled)', 'fallback.reset()',
+      'diagnostics()', 'help()', 'version()',
     ];
     console.log('%cm14u Console API', 'font-size:16px;font-weight:bold;color:#ff3b6b');
     console.log('Commands:', cmds.join('\n  m14u.'));

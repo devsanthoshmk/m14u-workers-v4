@@ -1,13 +1,18 @@
 import type { TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
-import { searchJioSaavn } from './jiosaavn';
+import { searchJioSaavn, type JioSaavnAccessOptions } from './jiosaavn';
 
 type SongIdentity = Pick<TrackItem, 'id' | 'title' | 'author'>;
 
-const normalize = (name: string) => name.normalize('NFKC').toLowerCase()
+export const normalizeSongText = (name: string) => name.normalize('NFKC').toLowerCase()
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
-const cleanArtist = (name: string) => name.replace(/\s+-\s+Topic$/i, '').trim();
-const artists = (name: string) => name.split(/,|\s+&\s+/).map(name => normalize(cleanArtist(name))).filter(Boolean);
+export const cleanArtistName = (name: string) => name.replace(/\s+-\s+Topic$/i, '').trim();
+export const splitArtists = (name: string) =>
+    name.split(/,|\s+&\s+/).map(part => normalizeSongText(cleanArtistName(part))).filter(Boolean);
+
+const normalize = normalizeSongText;
+const cleanArtist = cleanArtistName;
+const artists = splitArtists;
 
 function sameSong(a: SongIdentity, b: SongIdentity) {
     const title = normalize(a.title);
@@ -34,11 +39,16 @@ export async function findYouTubeSong(query: string, signal: AbortSignal) {
     });
 }
 
-export async function findSaavnMatch(seed: SongIdentity, results: TrackItem[], signal: AbortSignal) {
+export async function findSaavnMatch(
+    seed: SongIdentity,
+    results: TrackItem[],
+    signal: AbortSignal,
+    options?: JioSaavnAccessOptions,
+) {
     const existing = results.find(track => sameSong(track, seed));
     if (existing) return existing;
     // A title-only search can miss a recording that appears with its artist.
-    const targeted = await searchJioSaavn(`${seed.title} ${cleanArtist(seed.author)}`, signal);
+    const targeted = await searchJioSaavn(`${seed.title} ${cleanArtist(seed.author)}`, signal, undefined, options);
     return targeted.find(track => sameSong(track, seed));
 }
 

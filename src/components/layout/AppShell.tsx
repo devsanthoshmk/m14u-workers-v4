@@ -16,6 +16,7 @@ import { MobileAppPromo } from '@/components/MobileAppPromo';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { isNative } from '@/lib/utils/platform';
 import { PlayerBar } from '@/components/player/PlayerBar';
+import { AndroidFallbackNotice } from '@/components/player/AndroidFallbackNotice';
 import { QueuePanel } from '@/components/queue/QueuePanel';
 import { LyricsPanel } from '@/components/lyrics/LyricsPanel';
 import { clampPanelWidth, PANEL_WIDTHS, useUIStore } from '@/stores/uiStore';
@@ -149,22 +150,27 @@ export function AppShell() {
                     </div>
 
                     {/* Main content area */}
-                    <main className="relative min-w-0 flex-1 overflow-hidden">
-                        <KeepAliveRoute path="/">
-                            <HomePage />
-                        </KeepAliveRoute>
-                        <KeepAliveRoute path="/search">
-                            <SearchPage />
-                        </KeepAliveRoute>
-                        <KeepAliveRoute path="/favorites">
-                            <FavoritesPage />
-                        </KeepAliveRoute>
+                    <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+                        <AndroidFallbackNotice variant="banner" />
+                        <div className="relative min-h-0 flex-1 overflow-hidden">
+                            <KeepAliveRoute path="/">
+                                <HomePage />
+                            </KeepAliveRoute>
+                            <KeepAliveRoute path="/search">
+                                <SearchPage />
+                            </KeepAliveRoute>
+                            <KeepAliveRoute path="/favorites">
+                                <FavoritesPage />
+                            </KeepAliveRoute>
 
-                        <div
-                            style={{ display: isKeepAliveRoute ? 'none' : 'block' }}
-                            className="h-full w-full overflow-y-auto scrollbar-thin"
-                        >
-                            <Outlet />
+                            <div
+                                style={{ display: isKeepAliveRoute ? 'none' : 'block' }}
+                                className="h-full w-full overflow-y-auto scrollbar-thin"
+                            >
+                                <Outlet />
+                            </div>
+
+                            <AndroidFallbackNotice variant="toast" isNowPlaying={isNowPlaying} />
                         </div>
                     </main>
 

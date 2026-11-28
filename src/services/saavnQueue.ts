@@ -3,6 +3,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { TrackItem } from '@/types/music';
 import { API_BASE_URL } from '@/utils/constants';
+import { anyAbortSignal, timeoutAbortSignal } from '@/lib/modules/resolver/abortSignal';
 
 export const saavnId = /^jiosaavn:([\w-]{1,64})$/;
 const refillAt = 3;
@@ -40,7 +41,9 @@ export function startSaavnQueue(seed: TrackItem) {
     }
 
     async function refill(id: string, track: TrackItem) {
-        const signal = AbortSignal.any([session.signal, AbortSignal.timeout(16_000)]);
+        const timeout = timeoutAbortSignal(16_000);
+        const combined = anyAbortSignal([session.signal, timeout.signal]);
+        const signal = combined.signal;
         try {
             const params = new URLSearchParams({ id, title: track.title, artist: track.author });
             for (const key of [...seenSongs].slice(-30)) params.append('exclude', key.slice(0, 200));
@@ -63,6 +66,10 @@ export function startSaavnQueue(seed: TrackItem) {
                 added++;
             }
         } catch { /* Keep the current queue if discovery is unavailable. */ }
+        finally {
+            combined.cleanup();
+            timeout.cleanup();
+        }
     }
 
     const unwatchPlayer = usePlayerStore.subscribe((state, previous) => {

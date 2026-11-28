@@ -1,3 +1,7 @@
 # Playback adapters
 
 - Resolve streams by track ID, independently of the active catalog. Return normalized stream data to the player store.
+- `resolver/core.ts` (`resolveYouTubeStreams`, `configureYouTubeEvaluator`) is environment-agnostic: `VISIONOS` Innertube fast path (30-min per-`fetch` `visitorData` cache) with `youtubei.js/web` `Player` fallback (`TV`, `TV_EMBEDDED`, `MWEB`); reject non-HTTPS, non-`.googlevideo.com`, `sabr=1`, and `enhanced_except_` URLs, and keep `Log.setLevel(Log.Level.NONE)` so signed URLs are never logged.
+- `resolver/capacitorTransport.ts` leaves global `fetch`/`XHR` patching disabled and routes native HTTP through explicit `CapacitorHttp.request` (`createCapacitorFetch` / `capacitorFetch`) with strict YouTube HTTPS host, safe-header, body/response-size, concurrency (`4`), and same-origin redirect (`max 3`) bounds, plus isolated QuickJS WASM `evaluatePlayerScript` (`16 MiB` memory, `512 KiB` stack, `150 ms` deadline).
+- `getStreamData.ts` runs JS-first on native (`VITE_YOUTUBE_JS_RESOLVER !== 'false'`), racing `Server JS` with optional v1 `liveResolver` under a `6500 ms` deadline and expiry-aware caching (`expire - 30s`, capped at 5 min; 1 min fallback) before `StreamExtractor` (`NewPipe`) and Invidious fallbacks.
+- `resolver/lookahead.ts` (`createLookaheadManager`, `buildResolverKey`, `computeSourceExpiryMs`) pre-resolves up to 2 upcoming rows (`repeatMode`-aware, `45s` freshness margin) and serializes updates to `NativePlayback.setResolvedSources` scoped to active `generation`.

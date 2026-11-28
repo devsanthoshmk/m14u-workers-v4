@@ -158,6 +158,14 @@ Access via `window.m14u` in browser console.
 | `load.playlist(id, all?)` | Load playlist | `await m14u.load.playlist('abc')` |
 | `load.channel(id)` | Load channel | `await m14u.load.channel('abc')` |
 
+## Android Fallback
+| Function | Description | Example |
+|---|---|---|
+| `fallback.status()` | Inspect Android YouTube-to-JioSaavn fallback state (`enabled`, `mode`, `cooldownUntil`, `backoffStep`, `probing`, `recentFailureCount`, `activeTrackNotice`, `sessionBannerVisible`, `lastError`) | `m14u.fallback.status()` |
+| `fallback.retryYouTube()` | Trigger an immediate YouTube recovery health probe (Android only; returns boolean) | `await m14u.fallback.retryYouTube()` |
+| `fallback.setEnabled(enabled)` | Enable or opt out of Android JioSaavn fallback (`boolean`) | `m14u.fallback.setEnabled(false)` |
+| `fallback.reset()` | Reset fallback mode, failure history, cooldown, and notices | `m14u.fallback.reset()` |
+
 ## Meta
 | Function | Description | Example |
 |---|---|---|
