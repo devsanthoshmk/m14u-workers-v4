@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'src/lib/modules/resolver/**'
       - 'scripts/resolver-*'
+      - '.github/workflows/youtubei-sync.yml'
 
 concurrency:
   group: youtubei-sync-${{ github.ref }}
@@ -47,6 +48,7 @@ jobs:
 
       - name: Check npm for newer youtubei.js release
         id: check-version
+        if: github.event_name != 'push'
         run: |
           node -e '
             const fs = require("node:fs");
